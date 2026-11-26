@@ -244,7 +244,7 @@ These numbers come from runs, with the command that made them. They are not prom
 | Repeatability | 0 of 60 screenshots differ between two consecutive runs, including a story that renders the date, a random number and a spinner | Same command, run twice, same day |
 | Pages, one job | 168 screenshots (14 pages x 12 profiles, full-page, served by the site's own `next start`) in 93.7 s, 1.8 shots/s; a second run: 0 of 168 differ | Same machine and date, `capture` against a built 14-page Next.js site, run twice |
 | Compat scan | 1.1 s for the fixture's CSS against the project's `browserslist` defaults | `time node src/cli.mjs compat --paths fixtures/static-storybook` |
-| Hosted runner | CI_NUMBERS | The `selftest-*` jobs in `.github/workflows/ci.yml` |
+| Hosted runner | 48 screenshots (4 stories x 12 profiles) per browser on `ubuntu-24.04`: Chromium 11.7 s (4.1 shots/s), WebKit 20.1 s (2.4), Firefox 25.1 s (1.9). The unchanged compare run was green and the run with a deliberate change was red, in all three browsers (CI run 45765067718, 2026-11-26) | `capture` step output of the `selftest-bootstrap` job in `.github/workflows/ci.yml` |
 
 Numbers for your project depend on its story count, page weight and runner. The job summary prints runner seconds, and `results.json` records the time of every shot.
 
