@@ -143,8 +143,8 @@ export function validate(user, defaults = DEFAULTS, path = '') {
       if (!['chromium', 'firefox', 'webkit'].includes(b)) errors.push(`browsers: unknown browser "${b}"`);
     }
     const fail = user.compat?.fail;
-    if (fail !== undefined && !['unsupported', 'partial', 'never'].includes(fail)) {
-      errors.push('compat.fail: expected "unsupported", "partial" or "never"');
+    if (fail !== undefined && !['unsupported', 'partial', 'any', 'never'].includes(fail)) {
+      errors.push('compat.fail: expected "unsupported", "partial", "any" or "never"');
     }
     const th = user.compare?.threshold;
     if (th !== undefined && !(th >= 0 && th <= 1)) errors.push('compare.threshold: expected 0..1');

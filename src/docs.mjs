@@ -50,7 +50,7 @@ export const DESCRIPTIONS = {
   'compat.enabled': 'Run the check.',
   'compat.paths': 'Directories or files to scan for CSS (`.css`, and `<style>` in `.html`). Empty means the staged Storybook.',
   'compat.browserslist': 'Queries that replace the project\'s own browserslist config. Empty means use `.browserslistrc` / `package.json`.',
-  'compat.fail': '`unsupported` fails when a target lacks a feature, `partial` also on partial support, `never` only reports.',
+  'compat.fail': '`unsupported` fails when a target lacks a feature that can break the page. `partial` also fails on partial support. `any` also fails on progressive enhancements (`text-wrap: balance`, `scrollbar-width`, view transitions, ...), which are otherwise only reported. `never` only reports.',
   'compat.ignoreFeatures': 'caniuse feature ids to skip, for example `css-has`.',
   'compat.ignoreFiles': 'Patterns (`*` wildcard) of files to skip. Storybook\'s own UI assets are skipped by default.',
 };
@@ -109,7 +109,7 @@ export function schema() {
       } else if (kind(v) === 'array') {
         props[k] = { description, type: 'array', default: v, items: { type: k === 'browsers' ? 'string' : 'string' }, ...(k === 'browsers' ? { items: { enum: ['chromium', 'firefox', 'webkit'] } } : {}) };
       } else {
-        props[k] = { description, type: kind(v) === 'number' ? 'number' : kind(v), default: v, ...(k === 'fail' ? { enum: ['unsupported', 'partial', 'never'] } : {}) };
+        props[k] = { description, type: kind(v) === 'number' ? 'number' : kind(v), default: v, ...(k === 'fail' ? { enum: ['unsupported', 'partial', 'any', 'never'] } : {}) };
       }
     }
     return props;

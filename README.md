@@ -141,7 +141,7 @@ Put `.ui-nightly.json` in the project (or point `config` at another path). Every
 | `compat.enabled` | `true` | Run the check. |
 | `compat.paths` | `[]` | Directories or files to scan for CSS (`.css`, and `<style>` in `.html`). Empty means the staged Storybook. |
 | `compat.browserslist` | `[]` | Queries that replace the project's own browserslist config. Empty means use `.browserslistrc` / `package.json`. |
-| `compat.fail` | `"unsupported"` | `unsupported` fails when a target lacks a feature, `partial` also on partial support, `never` only reports. |
+| `compat.fail` | `"unsupported"` | `unsupported` fails when a target lacks a feature that can break the page. `partial` also fails on partial support. `any` also fails on progressive enhancements (`text-wrap: balance`, `scrollbar-width`, view transitions, ...), which are otherwise only reported. `never` only reports. |
 | `compat.ignoreFeatures` | `[]` | caniuse feature ids to skip, for example `css-has`. |
 | `compat.ignoreFiles` | `["*/sb-manager/*","*/sb-addons/*","*/sb-common-assets/*"]` | Patterns (`*` wildcard) of files to skip. Storybook's own UI assets are skipped by default. |
 
@@ -242,6 +242,7 @@ These numbers come from runs, with the command that made them. They are not prom
 | :-- | :-- | :-- |
 | Capture speed, one job | 60 screenshots (5 stories x 12 profiles) in 13.6 s, 4.4 shots/s | Chromium headless shell, `capture.concurrency` 2, Apple silicon laptop, 2026-11-26: `node src/cli.mjs capture` on `fixtures/static-storybook` |
 | Repeatability | 0 of 60 screenshots differ between two consecutive runs, including a story that renders the date, a random number and a spinner | Same command, run twice, same day |
+| Pages, one job | 168 screenshots (14 pages x 12 profiles, full-page, served by the site's own `next start`) in 93.7 s, 1.8 shots/s; a second run: 0 of 168 differ | Same machine and date, `capture` against a built 14-page Next.js site, run twice |
 | Compat scan | 1.1 s for the fixture's CSS against the project's `browserslist` defaults | `time node src/cli.mjs compat --paths fixtures/static-storybook` |
 | Hosted runner | CI_NUMBERS | The `selftest-*` jobs in `.github/workflows/ci.yml` |
 

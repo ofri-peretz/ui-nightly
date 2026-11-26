@@ -4,6 +4,8 @@ import { createRequire } from 'node:module';
 import { relative } from 'node:path';
 import { scanCss, styleBlocks } from './css-scan.mjs';
 import { detect, FEATURES } from './features.mjs';
+
+const DEGRADES = new Set(FEATURES.filter((f) => f.degrades).map((f) => f.id));
 import { walk, globMatch } from './util.mjs';
 
 const require = createRequire(import.meta.url);
@@ -84,9 +86,13 @@ export function runCompat(cfg, { cwd = process.cwd(), extraPaths = [] } = {}) {
   for (const u of used) {
     if (cfg.compat.ignoreFeatures.includes(u.id)) continue;
     const { unsupported, partial } = evaluate(data(u.id), targets);
-    if (unsupported.length || partial.length) issues.push({ ...u, unsupported, partial });
+    if (unsupported.length || partial.length) issues.push({ ...u, degrades: Boolean(DEGRADES.has(u.id)), unsupported, partial });
   }
-  const failing = issues.filter((i) => i.unsupported.length || (cfg.compat.fail === 'partial' && i.partial.length));
+  const mode = cfg.compat.fail;
+  const failing = issues.filter((i) => {
+    if (i.degrades && mode !== 'any') return false;
+    return i.unsupported.length > 0 || ((mode === 'partial' || mode === 'any') && i.partial.length > 0);
+  });
   return {
     targets, targetSource: source, filesScanned: files.length,
     featuresUsed: [...new Set(used.map((u) => u.id))].length,
@@ -99,10 +105,10 @@ export function compatMarkdown(r) {
   const lines = ['### CSS compatibility', ''];
   lines.push(`Checked ${r.filesScanned} file(s) against ${r.targets.length} browser target(s) from ${r.targetSource}. ${r.featuresUsed} known feature(s) in use, ${r.guarded} guarded by \`@supports\`.`, '');
   if (!r.issues.length) { lines.push('No CSS the declared targets cannot run.'); return lines.join('\n'); }
-  lines.push('| Feature | File | Unsupported in | Partial in |', '| :-- | :-- | :-- | :-- |');
-  for (const i of r.issues) {
-    const cut = (a) => (a.length > 6 ? `${a.slice(0, 6).join(', ')} and ${a.length - 6} more` : a.join(', ') || '-');
-    lines.push(`| ${i.label} (\`${i.id}\`) | \`${i.file}:${i.line}\`${i.count > 1 ? ` (+${i.count - 1})` : ''} | ${cut(i.unsupported)} | ${cut(i.partial)} |`);
+  lines.push('| Feature | If missing | File | Unsupported in | Partial in |', '| :-- | :-- | :-- | :-- | :-- |');
+  const cut = (a) => (a.length > 6 ? `${a.slice(0, 6).join(', ')} and ${a.length - 6} more` : a.join(', ') || '-');
+  for (const i of [...r.issues].sort((a, b) => Number(a.degrades) - Number(b.degrades))) {
+    lines.push(`| ${i.label} (\`${i.id}\`) | ${i.degrades ? 'degrades gracefully' : 'can break the page'} | \`${i.file}:${i.line}\`${i.count > 1 ? ` (+${i.count - 1})` : ''} | ${cut(i.unsupported)} | ${cut(i.partial)} |`);
   }
   return lines.join('\n');
 }

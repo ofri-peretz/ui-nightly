@@ -454,12 +454,13 @@
           }
         },
         "fail": {
-          "description": "`unsupported` fails when a target lacks a feature, `partial` also on partial support, `never` only reports.",
+          "description": "`unsupported` fails when a target lacks a feature that can break the page. `partial` also fails on partial support. `any` also fails on progressive enhancements (`text-wrap: balance`, `scrollbar-width`, view transitions, ...), which are otherwise only reported. `never` only reports.",
           "type": "string",
           "default": "unsupported",
           "enum": [
             "unsupported",
             "partial",
+            "any",
             "never"
           ]
         },

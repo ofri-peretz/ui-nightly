@@ -106,15 +106,15 @@ jobs:
       matrix: ${{ steps.plan.outputs.matrix }}
       shots: ${{ steps.plan.outputs.shots }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: ${{ inputs.mode == 'changed' && 0 || 1 }}
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: ${{ inputs.tool-repo }}
           ref: ${{ inputs.tool-ref }}
           path: ui-nightly-tool
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version: ${{ inputs.node-version }}
           cache: npm
@@ -154,7 +154,7 @@ jobs:
           ls -lh "$RUNNER_TEMP/ui-nightly-build.tgz"
       - name: Upload build outputs
         if: steps.plan.outputs.shots != '0'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: ui-nightly-build
           path: ${{ runner.temp }}/ui-nightly-build.tgz
@@ -172,13 +172,13 @@ jobs:
       max-parallel: ${{ inputs.max-parallel }}
       matrix: ${{ fromJSON(needs.build.outputs.matrix) }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: ${{ inputs.tool-repo }}
           ref: ${{ inputs.tool-ref }}
           path: ui-nightly-tool
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version: ${{ inputs.node-version }}
           cache: npm
@@ -187,7 +187,7 @@ jobs:
         working-directory: ui-nightly-tool
         run: npm ci --omit=dev --no-audit --no-fund
       - name: Restore the build
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: ui-nightly-build
           path: ${{ runner.temp }}/build
@@ -199,7 +199,7 @@ jobs:
         working-directory: ${{ inputs.working-directory }}
         run: ${{ inputs.install-command }}
       - name: Cache Playwright browsers
-        uses: actions/cache@v4
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ matrix.browser }}-${{ hashFiles('ui-nightly-tool/package-lock.json') }}
@@ -229,7 +229,7 @@ jobs:
             ${{ inputs.update-baselines && '--save-all' || '' }}
       - name: Upload results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: ui-nightly-results-${{ matrix.browser }}-${{ matrix.shard }}
           path: ${{ inputs.working-directory }}/ui-nightly-out/results-${{ matrix.browser }}-${{ matrix.shard }}
@@ -244,13 +244,13 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: ${{ inputs.tool-repo }}
           ref: ${{ inputs.tool-ref }}
           path: ui-nightly-tool
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version: ${{ inputs.node-version }}
           cache: npm
@@ -259,7 +259,7 @@ jobs:
         working-directory: ui-nightly-tool
         run: npm ci --omit=dev --no-audit --no-fund
       - name: Restore the build
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: ui-nightly-build
           path: ${{ runner.temp }}/build
@@ -276,7 +276,7 @@ jobs:
           exit "${PIPESTATUS[0]}"
       - name: Upload compat result
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: ui-nightly-compat
           path: ${{ inputs.working-directory }}/ui-nightly-out/compat/compat.json
@@ -295,13 +295,13 @@ jobs:
       regressions: ${{ steps.report.outputs.regressions }}
       failed: ${{ steps.report.outputs.failed }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: ${{ inputs.tool-repo }}
           ref: ${{ inputs.tool-ref }}
           path: ui-nightly-tool
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version: ${{ inputs.node-version }}
           cache: npm
@@ -311,7 +311,7 @@ jobs:
         run: npm ci --omit=dev --no-audit --no-fund
       - name: Restore the build (for the plan)
         if: needs.build.outputs.shots != '0'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: ui-nightly-build
           path: ${{ runner.temp }}/build
@@ -321,13 +321,13 @@ jobs:
         run: tar -xzf "$RUNNER_TEMP/build/ui-nightly-build.tgz" ui-nightly-out/plan.json
       - name: Download results
         if: needs.build.outputs.shots != '0'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           pattern: ui-nightly-results-*
           path: ${{ inputs.working-directory }}/ui-nightly-out/results
       - name: Download compat result
         if: needs.build.outputs.shots != '0'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: ui-nightly-compat
           path: ${{ inputs.working-directory }}/ui-nightly-out/compat
@@ -409,7 +409,7 @@ jobs:
           echo "::error::could not push baselines to $BRANCH"; exit 1
       - name: Upload report
         if: always() && needs.build.outputs.shots != '0'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: ui-nightly-report
           path: ${{ inputs.working-directory }}/ui-nightly-out/report
