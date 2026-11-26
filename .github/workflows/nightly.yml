@@ -150,7 +150,7 @@ jobs:
         run: |
           paths=(ui-nightly-out)
           while IFS= read -r p; do [ -n "$p" ] && paths+=("$p"); done <<< "$EXTRA"
-          tar -czf "$RUNNER_TEMP/ui-nightly-build.tgz" "${paths[@]}"
+          tar -czf "$RUNNER_TEMP/ui-nightly-build.tgz" --exclude=node_modules --exclude=.next/cache "${paths[@]}"
           ls -lh "$RUNNER_TEMP/ui-nightly-build.tgz"
       - name: Upload build outputs
         if: steps.plan.outputs.shots != '0'
@@ -420,6 +420,7 @@ jobs:
         working-directory: ${{ inputs.working-directory }}
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           FAILED: ${{ steps.report.outputs.failed }}
           LABEL: ${{ inputs.issue-label }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
