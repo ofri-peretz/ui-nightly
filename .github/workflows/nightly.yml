@@ -1,0 +1,444 @@
+name: ui-nightly
+
+# Reusable workflow. See README.md for the quickstart and the full config reference.
+#
+# The caller's job must grant at least: permissions: { contents: write, issues: write }
+# (contents: write is how baselines are stored on a branch, issues: write is the nightly issue).
+
+on:
+  workflow_call:
+    inputs:
+      config:
+        description: Path of the config file, relative to working-directory. A missing file means all defaults.
+        type: string
+        default: .ui-nightly.json
+      working-directory:
+        description: Directory of the project (where install and build run). Relative to the repository root.
+        type: string
+        default: .
+      node-version:
+        description: Node version for the caller's build and for ui-nightly (22.3 or newer).
+        type: string
+        default: '22'
+      install-command:
+        description: Installs the caller's dependencies. Empty to skip.
+        type: string
+        default: npm ci --no-audit --no-fund
+      build-command:
+        description: Builds the Storybook (or the site). Empty to skip, for a pre-built directory.
+        type: string
+        default: npx storybook build
+      artifact-paths:
+        description: Extra build outputs (relative to working-directory, one per line) shipped to the capture and compat jobs, for example a site build.
+        type: string
+        default: ''
+      capture-install:
+        description: Also run install-command in the capture jobs. Needed when pages.server.command starts the project's own server.
+        type: boolean
+        default: false
+      mode:
+        description: "full checks every story. changed checks only stories the change can touch (for pull requests)."
+        type: string
+        default: full
+      base-ref:
+        description: Base for changed mode. Default is the pull request base, or the default branch.
+        type: string
+        default: ''
+      runs-on:
+        description: Runner label. Pinned because baselines are only valid on the image that made them.
+        type: string
+        default: ubuntu-24.04
+      max-parallel:
+        description: Maximum parallel capture jobs.
+        type: number
+        default: 6
+      baseline-branch:
+        description: Branch of the caller's repository that stores the baselines. Created on first run.
+        type: string
+        default: ui-baselines
+      baseline-write:
+        description: "auto writes new baselines except on pull requests. always writes anywhere. never never writes."
+        type: string
+        default: auto
+      update-baselines:
+        description: Accept every changed screenshot as the new baseline (a person triggers this after reading the report).
+        type: boolean
+        default: false
+      fail-on-regression:
+        description: Fail the workflow when a regression or a compat failure is found.
+        type: boolean
+        default: true
+      open-issue:
+        description: On scheduled and manually dispatched runs, open or update one issue when a night fails, and close it when a night is green.
+        type: boolean
+        default: true
+      issue-label:
+        description: Label for the nightly issue.
+        type: string
+        default: ui-nightly
+      tool-repo:
+        description: Repository that holds ui-nightly.
+        type: string
+        default: ofri-peretz/ui-nightly
+      tool-ref:
+        description: Ref of ui-nightly to run. Match the ref you used in `uses:`.
+        type: string
+        default: v1
+    outputs:
+      regressions:
+        description: Number of failed or errored screenshots.
+        value: ${{ jobs.report.outputs.regressions }}
+      failed:
+        description: "true when the run found a regression or a compat failure."
+        value: ${{ jobs.report.outputs.failed }}
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build:
+    name: build and plan
+    runs-on: ${{ inputs.runs-on }}
+    permissions:
+      contents: read
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      shots: ${{ steps.plan.outputs.shots }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: ${{ inputs.mode == 'changed' && 0 || 1 }}
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.tool-repo }}
+          ref: ${{ inputs.tool-ref }}
+          path: ui-nightly-tool
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: npm
+          cache-dependency-path: ui-nightly-tool/package-lock.json
+      - name: Install ui-nightly
+        working-directory: ui-nightly-tool
+        run: npm ci --omit=dev --no-audit --no-fund
+      - name: Validate config
+        working-directory: ${{ inputs.working-directory }}
+        run: node "$GITHUB_WORKSPACE/ui-nightly-tool/src/cli.mjs" check-config --config "${{ inputs.config }}"
+      - name: Install project dependencies
+        if: inputs.install-command != ''
+        working-directory: ${{ inputs.working-directory }}
+        run: ${{ inputs.install-command }}
+      - name: Build
+        if: inputs.build-command != ''
+        working-directory: ${{ inputs.working-directory }}
+        run: ${{ inputs.build-command }}
+      - name: Plan
+        id: plan
+        working-directory: ${{ inputs.working-directory }}
+        env:
+          BASE_REF_INPUT: ${{ inputs.base-ref }}
+          PR_BASE: ${{ github.base_ref || github.event.repository.default_branch }}
+        run: |
+          base="${BASE_REF_INPUT:-origin/$PR_BASE}"
+          node "$GITHUB_WORKSPACE/ui-nightly-tool/src/cli.mjs" plan --config "${{ inputs.config }}" --mode "${{ inputs.mode }}" --base-ref "$base"
+      - name: Pack build outputs
+        if: steps.plan.outputs.shots != '0'
+        working-directory: ${{ inputs.working-directory }}
+        env:
+          EXTRA: ${{ inputs.artifact-paths }}
+        run: |
+          paths=(ui-nightly-out)
+          while IFS= read -r p; do [ -n "$p" ] && paths+=("$p"); done <<< "$EXTRA"
+          tar -czf "$RUNNER_TEMP/ui-nightly-build.tgz" "${paths[@]}"
+          ls -lh "$RUNNER_TEMP/ui-nightly-build.tgz"
+      - name: Upload build outputs
+        if: steps.plan.outputs.shots != '0'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-nightly-build
+          path: ${{ runner.temp }}/ui-nightly-build.tgz
+          retention-days: 2
+
+  capture:
+    name: capture ${{ matrix.browser }} ${{ matrix.shard }}/${{ matrix.shards }}
+    needs: build
+    if: needs.build.outputs.shots != '0'
+    runs-on: ${{ inputs.runs-on }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      max-parallel: ${{ inputs.max-parallel }}
+      matrix: ${{ fromJSON(needs.build.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.tool-repo }}
+          ref: ${{ inputs.tool-ref }}
+          path: ui-nightly-tool
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: npm
+          cache-dependency-path: ui-nightly-tool/package-lock.json
+      - name: Install ui-nightly
+        working-directory: ui-nightly-tool
+        run: npm ci --omit=dev --no-audit --no-fund
+      - name: Restore the build
+        uses: actions/download-artifact@v4
+        with:
+          name: ui-nightly-build
+          path: ${{ runner.temp }}/build
+      - name: Unpack the build
+        working-directory: ${{ inputs.working-directory }}
+        run: tar -xzf "$RUNNER_TEMP/build/ui-nightly-build.tgz"
+      - name: Install project dependencies
+        if: inputs.capture-install && inputs.install-command != ''
+        working-directory: ${{ inputs.working-directory }}
+        run: ${{ inputs.install-command }}
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ matrix.browser }}-${{ hashFiles('ui-nightly-tool/package-lock.json') }}
+      - name: Install browser
+        run: node ui-nightly-tool/node_modules/playwright-core/cli.js install --with-deps ${{ matrix.browser }}
+      - name: Fetch baselines
+        working-directory: ${{ inputs.working-directory }}
+        env:
+          REMOTE: ${{ github.server_url }}/${{ github.repository }}.git
+          BRANCH: ${{ inputs.baseline-branch }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          auth="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
+          git_auth=(-c "http.extraheader=Authorization: Basic $auth")
+          if git "${git_auth[@]}" ls-remote --exit-code --heads "$REMOTE" "$BRANCH" >/dev/null 2>&1; then
+            git "${git_auth[@]}" clone --quiet --depth 1 --single-branch --branch "$BRANCH" "$REMOTE" ui-nightly-out/baselines
+            rm -rf ui-nightly-out/baselines/.git
+            echo "Baselines: $(find ui-nightly-out/baselines -name '*.png' | wc -l) screenshots from branch $BRANCH"
+          else
+            echo "No baseline branch '$BRANCH' yet: every screenshot will be new."
+          fi
+      - name: Capture
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          node "$GITHUB_WORKSPACE/ui-nightly-tool/src/cli.mjs" capture --config "${{ inputs.config }}" \
+            --browser "${{ matrix.browser }}" --shard "${{ matrix.shard }}" --shards "${{ matrix.shards }}" \
+            ${{ inputs.update-baselines && '--save-all' || '' }}
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-nightly-results-${{ matrix.browser }}-${{ matrix.shard }}
+          path: ${{ inputs.working-directory }}/ui-nightly-out/results-${{ matrix.browser }}-${{ matrix.shard }}
+          retention-days: 7
+          if-no-files-found: warn
+
+  compat:
+    name: CSS compatibility
+    needs: build
+    if: needs.build.outputs.shots != '0'
+    runs-on: ${{ inputs.runs-on }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.tool-repo }}
+          ref: ${{ inputs.tool-ref }}
+          path: ui-nightly-tool
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: npm
+          cache-dependency-path: ui-nightly-tool/package-lock.json
+      - name: Install ui-nightly
+        working-directory: ui-nightly-tool
+        run: npm ci --omit=dev --no-audit --no-fund
+      - name: Restore the build
+        uses: actions/download-artifact@v4
+        with:
+          name: ui-nightly-build
+          path: ${{ runner.temp }}/build
+      - name: Unpack the build
+        working-directory: ${{ inputs.working-directory }}
+        run: tar -xzf "$RUNNER_TEMP/build/ui-nightly-build.tgz"
+      - name: Check CSS against browserslist
+        id: compat
+        working-directory: ${{ inputs.working-directory }}
+        continue-on-error: true
+        run: |
+          mkdir -p ui-nightly-out/compat
+          node "$GITHUB_WORKSPACE/ui-nightly-tool/src/cli.mjs" compat --config "${{ inputs.config }}" --out ui-nightly-out/compat/compat.json | tee -a "$GITHUB_STEP_SUMMARY"
+          exit "${PIPESTATUS[0]}"
+      - name: Upload compat result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-nightly-compat
+          path: ${{ inputs.working-directory }}/ui-nightly-out/compat/compat.json
+          retention-days: 7
+          if-no-files-found: ignore
+
+  report:
+    name: report
+    needs: [build, capture, compat]
+    if: always() && needs.build.result == 'success'
+    runs-on: ${{ inputs.runs-on }}
+    permissions:
+      contents: write
+      issues: write
+    outputs:
+      regressions: ${{ steps.report.outputs.regressions }}
+      failed: ${{ steps.report.outputs.failed }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.tool-repo }}
+          ref: ${{ inputs.tool-ref }}
+          path: ui-nightly-tool
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: npm
+          cache-dependency-path: ui-nightly-tool/package-lock.json
+      - name: Install ui-nightly
+        working-directory: ui-nightly-tool
+        run: npm ci --omit=dev --no-audit --no-fund
+      - name: Restore the build (for the plan)
+        if: needs.build.outputs.shots != '0'
+        uses: actions/download-artifact@v4
+        with:
+          name: ui-nightly-build
+          path: ${{ runner.temp }}/build
+      - name: Unpack the plan
+        if: needs.build.outputs.shots != '0'
+        working-directory: ${{ inputs.working-directory }}
+        run: tar -xzf "$RUNNER_TEMP/build/ui-nightly-build.tgz" ui-nightly-out/plan.json
+      - name: Download results
+        if: needs.build.outputs.shots != '0'
+        uses: actions/download-artifact@v4
+        with:
+          pattern: ui-nightly-results-*
+          path: ${{ inputs.working-directory }}/ui-nightly-out/results
+      - name: Download compat result
+        if: needs.build.outputs.shots != '0'
+        uses: actions/download-artifact@v4
+        with:
+          name: ui-nightly-compat
+          path: ${{ inputs.working-directory }}/ui-nightly-out/compat
+        continue-on-error: true
+      - name: Fetch baselines
+        id: baselines
+        working-directory: ${{ inputs.working-directory }}
+        env:
+          REMOTE: ${{ github.server_url }}/${{ github.repository }}.git
+          BRANCH: ${{ inputs.baseline-branch }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          auth="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
+          git_auth=(-c "http.extraheader=Authorization: Basic $auth")
+          if git "${git_auth[@]}" ls-remote --exit-code --heads "$REMOTE" "$BRANCH" >/dev/null 2>&1; then
+            git "${git_auth[@]}" clone --quiet --depth 1 --single-branch --branch "$BRANCH" "$REMOTE" ui-nightly-out/baselines
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            mkdir -p ui-nightly-out/baselines
+            git -C ui-nightly-out/baselines init --quiet --initial-branch="$BRANCH"
+            git -C ui-nightly-out/baselines remote add origin "$REMOTE"
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Decide whether baselines may be written
+        id: write
+        env:
+          POLICY: ${{ inputs.baseline-write }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          write=false
+          case "$POLICY" in
+            always) write=true ;;
+            auto) [ "$EVENT" != "pull_request" ] && write=true ;;
+          esac
+          echo "write=$write" >> "$GITHUB_OUTPUT"
+      - name: Report
+        id: report
+        working-directory: ${{ inputs.working-directory }}
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          WRITE: ${{ steps.write.outputs.write }}
+          UPDATE: ${{ inputs.update-baselines }}
+          FULL: ${{ inputs.mode == 'full' }}
+        run: |
+          mkdir -p ui-nightly-out/results ui-nightly-out/compat
+          args=(--config "${{ inputs.config }}" --results ui-nightly-out/results --plan ui-nightly-out/plan.json
+                --compat ui-nightly-out/compat/compat.json --out ui-nightly-out/report --run-url "$RUN_URL" --no-fail)
+          if [ "${{ needs.build.outputs.shots }}" = "0" ]; then
+            echo "## UI nightly: nothing to check" >> "$GITHUB_STEP_SUMMARY"
+            echo "No stories or pages were selected (changed mode with no affected stories, or an empty include list)." >> "$GITHUB_STEP_SUMMARY"
+            echo "regressions=0" >> "$GITHUB_OUTPUT"; echo "failed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "$WRITE" = "true" ]; then
+            args+=(--write-baselines ui-nightly-out/baselines)
+            [ "$UPDATE" = "true" ] && args+=(--update)
+            [ "$UPDATE" = "true" ] && [ "$FULL" = "true" ] && args+=(--prune)
+          fi
+          node "$GITHUB_WORKSPACE/ui-nightly-tool/src/cli.mjs" report "${args[@]}"
+      - name: Commit baselines
+        if: steps.write.outputs.write == 'true' && needs.build.outputs.shots != '0' && steps.report.outputs.baseline_changes != '0'
+        working-directory: ${{ inputs.working-directory }}/ui-nightly-out/baselines
+        env:
+          BRANCH: ${{ inputs.baseline-branch }}
+          GH_TOKEN: ${{ github.token }}
+          UPDATE: ${{ inputs.update-baselines }}
+        run: |
+          auth="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && { echo "No baseline changes."; exit 0; }
+          msg="chore(baselines): $([ "$UPDATE" = "true" ] && echo "accept changed screenshots" || echo "add new screenshots") (run ${{ github.run_id }})"
+          git commit --quiet -m "$msg"
+          for attempt in 1 2 3; do
+            git -c "http.extraheader=Authorization: Basic $auth" push origin "HEAD:refs/heads/$BRANCH" && exit 0
+            git -c "http.extraheader=Authorization: Basic $auth" pull --rebase --quiet origin "$BRANCH" || true
+          done
+          echo "::error::could not push baselines to $BRANCH"; exit 1
+      - name: Upload report
+        if: always() && needs.build.outputs.shots != '0'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-nightly-report
+          path: ${{ inputs.working-directory }}/ui-nightly-out/report
+          retention-days: 30
+          if-no-files-found: ignore
+      - name: Open, update or close the nightly issue
+        if: always() && inputs.open-issue && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && needs.build.outputs.shots != '0'
+        working-directory: ${{ inputs.working-directory }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FAILED: ${{ steps.report.outputs.failed }}
+          LABEL: ${{ inputs.issue-label }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          title="UI nightly: regressions found"
+          num="$(gh issue list --state open --label "$LABEL" --json number,title -q "map(select(.title==\"$title\"))[0].number" 2>/dev/null || true)"
+          if [ "$FAILED" = "true" ]; then
+            { head -c 60000 ui-nightly-out/report/summary.md 2>/dev/null || echo "See the run."; echo; echo "Run: $RUN_URL"; } > "$RUNNER_TEMP/issue.md"
+            if [ -n "$num" ]; then gh issue comment "$num" --body-file "$RUNNER_TEMP/issue.md"
+            else
+              gh label create "$LABEL" --color 5319e7 --description "Opened by ui-nightly" 2>/dev/null || true
+              gh issue create --title "$title" --label "$LABEL" --body-file "$RUNNER_TEMP/issue.md"
+            fi
+          elif [ -n "$num" ]; then
+            gh issue comment "$num" --body "Green again: $RUN_URL"
+            gh issue close "$num"
+          fi
+      - name: Fail on regression
+        if: inputs.fail-on-regression && steps.report.outputs.failed == 'true'
+        run: |
+          echo "::error::ui-nightly found regressions. See the job summary and the ui-nightly-report artifact."
+          exit 1

@@ -1,0 +1,36 @@
+:root {
+  --bg: #ffffff;
+  --fg: #16202a;
+  --muted: #52606d;
+  --accent: #1f6feb;
+  --accent-fg: #ffffff;
+  --surface: #f3f5f8;
+  --border: #c9d1d9;
+  --space: 16px;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #0e141b; --fg: #e8edf2; --muted: #9aa7b4; --accent: #58a6ff; --accent-fg: #06121f; --surface: #18212b; --border: #2f3b48; }
+}
+[data-theme="dark"] {
+  --bg: #0e141b; --fg: #e8edf2; --muted: #9aa7b4; --accent: #58a6ff; --accent-fg: #06121f; --surface: #18212b; --border: #2f3b48;
+}
+* { box-sizing: border-box; }
+html { font-size: 100%; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 1rem/1.5 system-ui, sans-serif; }
+.pad { padding: var(--space); }
+.btn { font: inherit; padding: 0.5rem 1rem; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--fg); }
+.btn-primary { background: var(--accent); color: var(--accent-fg); border-color: transparent; }
+.btn:disabled { opacity: 0.5; }
+.btn:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: var(--space); max-width: 28rem; }
+.card-title { margin: 0 0 0.5rem; font-size: clamp(1.125rem, 1rem + 1vw, 1.75rem); }
+.card-actions { display: flex; gap: 8px; margin-top: var(--space); flex-wrap: wrap; }
+.grid { display: grid; gap: var(--space); grid-template-columns: 1fr; }
+.tile { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 2rem 1rem; text-align: center; }
+@media (min-width: 600px) { .grid { grid-template-columns: repeat(2, 1fr); } }
+@media (min-width: 1024px) { .grid { grid-template-columns: repeat(3, 1fr); } .tile { padding: 3rem 1rem; } }
+.spinner { width: 32px; height: 32px; border: 4px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@supports (container-type: inline-size) {
+  .card { container-type: inline-size; }
+}

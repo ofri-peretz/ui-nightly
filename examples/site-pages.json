@@ -1,0 +1,8 @@
+{
+  "storybook": { "dir": "does-not-exist" },
+  "pages": {
+    "urls": ["/", "/pricing", "/docs"],
+    "server": { "command": "npm run preview", "url": "http://127.0.0.1:3000" }
+  },
+  "compat": { "paths": ["build/static/css"] }
+}

@@ -1,0 +1,20 @@
+{
+  "$schema": "https://raw.githubusercontent.com/ofri-peretz/ui-nightly/v1/schema.json",
+  "storybook": { "dir": "storybook-static", "exclude": ["Internal/*"] },
+  "browsers": ["chromium", "firefox", "webkit"],
+  "viewports": {
+    "phone": { "device": "iPhone 13" },
+    "tablet": { "device": "iPad (gen 7)" },
+    "desktop": { "width": 1440, "height": 900 },
+    "watch": { "width": 320, "height": 568 }
+  },
+  "variants": {
+    "text150": null,
+    "rtl": { "htmlAttributes": { "dir": "rtl" }, "viewports": ["phone"] }
+  },
+  "compare": {
+    "maxDiffPixelRatio": 0.0005,
+    "overrides": [{ "match": "Charts/*", "maxDiffPixelRatio": 0.01 }]
+  },
+  "compat": { "fail": "unsupported", "ignoreFeatures": ["css-has"] }
+}

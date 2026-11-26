@@ -1,0 +1,20 @@
+{
+  "name": "ui-nightly",
+  "version": "1.0.0",
+  "description": "Nightly UI quality check for GitHub Actions: per-breakpoint visual regression across browsers and themes, plus browserslist CSS compatibility.",
+  "type": "module",
+  "license": "MIT",
+  "private": true,
+  "engines": { "node": ">=22.3" },
+  "bin": { "ui-nightly": "src/cli.mjs" },
+  "scripts": {
+    "test": "node --test \"test/*.test.mjs\"",
+    "test:e2e": "node --test \"test/e2e/*.test.mjs\"",
+    "check": "node src/cli.mjs check-config --config examples/ui-nightly.json && npm test"
+  },
+  "dependencies": {
+    "browserslist": "4.29.6",
+    "caniuse-lite": "1.0.30001828",
+    "playwright-core": "1.65.1"
+  }
+}

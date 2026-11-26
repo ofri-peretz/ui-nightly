@@ -1,0 +1,145 @@
+name: ci
+
+# Self-test. Three layers: unit tests, an end-to-end run per browser on a static fixture,
+# and the reusable workflow itself against a real (tiny) Storybook, run three times:
+# bootstrap the baselines, compare against them, and detect a deliberate regression.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 4 * * 1' # weekly: catches Playwright, runner image and Storybook drift
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit:
+    name: unit (node ${{ matrix.node }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['22', '24']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm run check
+      - name: Generated docs are current
+        run: |
+          node scripts/gen-docs.mjs
+          git diff --exit-code -- README.md schema.json
+
+  e2e:
+    name: e2e (${{ matrix.browser }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, firefox, webkit]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ matrix.browser }}-${{ hashFiles('package-lock.json') }}
+      - run: node node_modules/playwright-core/cli.js install --with-deps ${{ matrix.browser }}
+      - run: npm run test:e2e
+        env:
+          UI_NIGHTLY_BROWSER: ${{ matrix.browser }}
+
+  selftest-bootstrap:
+    name: workflow, bootstrap baselines
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    needs: [unit, e2e]
+    permissions:
+      contents: write
+      issues: write
+    uses: ./.github/workflows/nightly.yml
+    with:
+      working-directory: fixtures/storybook-app
+      node-version: '22'
+      baseline-branch: selftest-${{ github.run_id }}-${{ github.run_attempt }}
+      tool-repo: ${{ github.repository }}
+      tool-ref: ${{ github.sha }}
+      open-issue: false
+
+  selftest-compare:
+    name: workflow, compare with baselines
+    needs: selftest-bootstrap
+    permissions:
+      contents: write
+      issues: write
+    uses: ./.github/workflows/nightly.yml
+    with:
+      working-directory: fixtures/storybook-app
+      node-version: '22'
+      baseline-branch: selftest-${{ github.run_id }}-${{ github.run_attempt }}
+      baseline-write: never
+      tool-repo: ${{ github.repository }}
+      tool-ref: ${{ github.sha }}
+      open-issue: false
+
+  selftest-detect:
+    name: workflow, detects a deliberate regression
+    needs: selftest-compare
+    permissions:
+      contents: write
+      issues: write
+    uses: ./.github/workflows/nightly.yml
+    with:
+      working-directory: fixtures/storybook-app
+      node-version: '22'
+      # The same Storybook with one deliberate visual change appended to its built CSS.
+      build-command: >-
+        npx storybook build &&
+        find storybook-static/assets -name '*.css' -exec sh -c 'echo ".btn-primary{background:#d1242f!important}" >> "$1"' _ {} \;
+      baseline-branch: selftest-${{ github.run_id }}-${{ github.run_attempt }}
+      baseline-write: never
+      fail-on-regression: false
+      tool-repo: ${{ github.repository }}
+      tool-ref: ${{ github.sha }}
+      open-issue: false
+
+  selftest-assert:
+    name: workflow results are what they should be
+    needs: [selftest-compare, selftest-detect]
+    if: always() && needs.selftest-detect.result == 'success'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Compare run was green, detect run was red
+        env:
+          COMPARE: ${{ needs.selftest-compare.outputs.failed }}
+          DETECT: ${{ needs.selftest-detect.outputs.failed }}
+          DETECT_N: ${{ needs.selftest-detect.outputs.regressions }}
+        run: |
+          echo "compare failed=$COMPARE, detect failed=$DETECT regressions=$DETECT_N"
+          [ "$COMPARE" = "false" ] || { echo "::error::an unchanged build must pass"; exit 1; }
+          [ "$DETECT" = "true" ] && [ "${DETECT_N:-0}" -gt 0 ] || { echo "::error::a deliberate regression must be reported"; exit 1; }
+
+  selftest-cleanup:
+    name: remove the throwaway baseline branch
+    needs: [selftest-bootstrap, selftest-assert]
+    if: always() && needs.selftest-bootstrap.result != 'skipped'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X DELETE "repos/${{ github.repository }}/git/refs/heads/selftest-${{ github.run_id }}-${{ github.run_attempt }}" || true

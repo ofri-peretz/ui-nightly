@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fixture Storybook preview</title>
+<link rel="stylesheet" href="assets/app.css">
+</head>
+<body class="sb-show-preparing-story">
+<div id="storybook-root"></div>
+<div id="error-message"></div>
+<script>
+(function () {
+  var params = new URLSearchParams(location.search);
+  var id = params.get('id');
+  var globals = (params.get('globals') || '').split(';').filter(Boolean);
+  globals.forEach(function (g) {
+    var kv = g.split(':');
+    if (kv[0] === 'theme') document.documentElement.setAttribute('data-theme', kv[1]);
+  });
+  var stories = {
+    'button--primary': '<div class="pad"><button class="btn btn-primary">Save changes</button></div>',
+    'button--disabled': '<div class="pad"><button class="btn btn-primary" disabled>Save changes</button></div>',
+    'card--default': '<div class="pad"><article class="card"><h2 class="card-title">Quarterly report</h2><p>Revenue grew across every region, with the strongest quarter in two years.</p><div class="card-actions"><button class="btn btn-primary">Open</button><button class="btn">Share</button></div></article></div>',
+    'layout--responsive': '<div class="pad"><div class="grid">' + [1, 2, 3, 4, 5, 6].map(function (n) { return '<div class="tile">Tile ' + n + '</div>'; }).join('') + '</div></div>',
+    'determinism--clock-random-motion': '<div class="pad"><p>Date: <span id="d"></span></p><p>Random: <span id="r"></span></p><div class="spinner"></div></div>'
+  };
+  var root = document.getElementById('storybook-root');
+  if (!stories[id]) { document.body.className = 'sb-show-nopreview'; return; }
+  root.innerHTML = stories[id];
+  if (id === 'determinism--clock-random-motion') {
+    document.getElementById('d').textContent = new Date().toISOString();
+    document.getElementById('r').textContent = Math.random().toFixed(6);
+  }
+  document.body.className = 'sb-show-main';
+})();
+</script>
+</body>
+</html>

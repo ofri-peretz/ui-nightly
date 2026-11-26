@@ -1,0 +1,489 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ui-nightly configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "storybook": {
+      "description": "Where the built Storybook is and which stories to check.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "dir": {
+          "description": "Directory of a built static Storybook (the output of `storybook build`). It must contain `index.json` or `stories.json`.",
+          "type": "string",
+          "default": "storybook-static"
+        },
+        "include": {
+          "description": "Patterns (`*` wildcard, case-insensitive) matched against story id, title and `title/name`. Empty means every story.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
+        },
+        "exclude": {
+          "description": "Same patterns; a match removes the story.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
+        },
+        "skipTags": {
+          "description": "Stories carrying any of these tags are skipped. Tag a story `no-visual` to opt it out.",
+          "type": "array",
+          "default": [
+            "no-visual"
+          ],
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "pages": {
+      "description": "Page URLs to screenshot besides, or instead of, stories.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "urls": {
+          "description": "Paths (`/pricing`) or full URLs. Each is captured in every profile.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
+        },
+        "baseUrl": {
+          "description": "Base for relative `urls` when no server command is set.",
+          "type": "string",
+          "default": ""
+        },
+        "server": {
+          "description": "A server the workflow starts for the pages.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "command": {
+              "description": "Shell command that serves the site, run in the working directory. Empty means none. The capture job needs the project installed: set `capture-install: true`.",
+              "type": "string",
+              "default": ""
+            },
+            "url": {
+              "description": "URL polled until the server answers. Also the base URL for relative `urls` when a command is set.",
+              "type": "string",
+              "default": "http://127.0.0.1:3000"
+            },
+            "timeoutSeconds": {
+              "description": "How long to wait for the server before failing.",
+              "type": "number",
+              "default": 120
+            }
+          }
+        }
+      }
+    },
+    "browsers": {
+      "description": "Engines to run: `chromium`, `firefox`, `webkit`. One matrix leg each.",
+      "type": "array",
+      "default": [
+        "chromium"
+      ],
+      "items": {
+        "enum": [
+          "chromium",
+          "firefox",
+          "webkit"
+        ]
+      }
+    },
+    "viewports": {
+      "description": "Named viewports. Merged with the defaults by name; `null` removes a default. Each is `{ \"device\": \"iPhone 13\" }` (a Playwright device: size, user agent, touch) or `{ \"width\", \"height\" }`.",
+      "type": "object",
+      "default": {
+        "phone": {
+          "device": "iPhone 13"
+        },
+        "tablet": {
+          "device": "iPad (gen 7)"
+        },
+        "desktop": {
+          "width": 1280,
+          "height": 800
+        }
+      },
+      "additionalProperties": {
+        "oneOf": [
+          {
+            "type": "null"
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "device": {
+                "description": "A Playwright device name such as `iPhone 13` or `iPad (gen 7)`. Brings the size, user agent, touch and mobile flags."
+              },
+              "width": {
+                "description": "CSS pixel width (with `height`, instead of `device`; overrides the device)."
+              },
+              "height": {
+                "description": "CSS pixel height."
+              },
+              "deviceScaleFactor": {
+                "description": "Pixel density for this viewport. Default: `capture.deviceScaleFactor`."
+              },
+              "isMobile": {
+                "description": "Mobile viewport behaviour. Ignored on Firefox, which does not support it."
+              },
+              "hasTouch": {
+                "description": "Touch events."
+              },
+              "browsers": {
+                "description": "Engines this viewport is captured in. Omit for all. Use it to keep Firefox and WebKit to a smaller set."
+              }
+            }
+          }
+        ]
+      }
+    },
+    "variants": {
+      "description": "Named reading conditions, merged with the defaults by name; `null` removes one. A profile is every viewport x variant (a variant may limit itself with `viewports`).",
+      "type": "object",
+      "default": {
+        "light": {
+          "colorScheme": "light"
+        },
+        "dark": {
+          "colorScheme": "dark",
+          "globals": {
+            "theme": "dark"
+          }
+        },
+        "contrast": {
+          "colorScheme": "light",
+          "forcedColors": "active"
+        },
+        "zoom200": {
+          "colorScheme": "light",
+          "zoom": 2,
+          "viewports": [
+            "desktop"
+          ]
+        },
+        "text150": {
+          "colorScheme": "light",
+          "textScale": 1.5,
+          "viewports": [
+            "phone",
+            "desktop"
+          ]
+        }
+      },
+      "additionalProperties": {
+        "oneOf": [
+          {
+            "type": "null"
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "colorScheme": {
+                "description": "`light` or `dark`: the `prefers-color-scheme` media feature."
+              },
+              "forcedColors": {
+                "description": "`active` emulates forced-colors (Windows high contrast); `none` is off."
+              },
+              "contrast": {
+                "description": "`more` or `no-preference`: the `prefers-contrast` media feature."
+              },
+              "reducedMotion": {
+                "description": "`reduce` or `no-preference` for this variant. Default: `capture.reducedMotion`."
+              },
+              "zoom": {
+                "description": "Browser zoom factor. 2 is 200%: half the CSS viewport at twice the pixel density."
+              },
+              "textScale": {
+                "description": "Root `font-size` as a multiple (1.5 is 150% text). Finds fixed-pixel text."
+              },
+              "globals": {
+                "description": "Storybook globals sent as `&globals=key:value;...`, for example `{ \"theme\": \"dark\" }`."
+              },
+              "htmlAttributes": {
+                "description": "Attributes set on `<html>`, for example `{ \"data-theme\": \"dark\" }`."
+              },
+              "htmlClass": {
+                "description": "Classes added to `<html>`, for example `[\"dark\"]`."
+              },
+              "css": {
+                "description": "CSS injected for this variant only."
+              },
+              "viewports": {
+                "description": "Names of the viewports this variant applies to. Omit for all."
+              },
+              "browsers": {
+                "description": "Engines this variant is captured in. Omit for all."
+              }
+            }
+          }
+        ]
+      }
+    },
+    "capture": {
+      "description": "How a page is rendered and photographed.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "fullPage": {
+          "description": "Capture the full scroll height rather than only the viewport.",
+          "type": "boolean",
+          "default": true
+        },
+        "maxHeight": {
+          "description": "Cap on the captured height in CSS pixels, so an endless page cannot make an endless image.",
+          "type": "number",
+          "default": 4000
+        },
+        "deviceScaleFactor": {
+          "description": "Pixel density. 1 keeps images small; a viewport can override it with its own `deviceScaleFactor`.",
+          "type": "number",
+          "default": 1
+        },
+        "timezone": {
+          "description": "Timezone id, fixed for determinism.",
+          "type": "string",
+          "default": "UTC"
+        },
+        "locale": {
+          "description": "Locale, fixed for determinism.",
+          "type": "string",
+          "default": "en-US"
+        },
+        "fixedTime": {
+          "description": "ISO time the page clock is fixed to. Empty leaves the real clock.",
+          "type": "string",
+          "default": "2026-01-01T12:00:00Z"
+        },
+        "seedRandom": {
+          "description": "Replace `Math.random` with a seeded generator.",
+          "type": "boolean",
+          "default": true
+        },
+        "disableAnimations": {
+          "description": "Disable CSS animations and transitions and hide the caret.",
+          "type": "boolean",
+          "default": true
+        },
+        "reducedMotion": {
+          "description": "`prefers-reduced-motion` for every profile (`reduce` or `no-preference`). A variant can override it.",
+          "type": "string",
+          "default": "reduce"
+        },
+        "settleMs": {
+          "description": "Pause after the page is ready, before the first frame.",
+          "type": "number",
+          "default": 100
+        },
+        "timeoutMs": {
+          "description": "Per-step timeout: navigation, story render, selector wait.",
+          "type": "number",
+          "default": 30000
+        },
+        "stabilityTries": {
+          "description": "Take frames until two in a row are identical, up to this many. 1 turns the check off.",
+          "type": "number",
+          "default": 3
+        },
+        "retries": {
+          "description": "Extra attempts for a mismatching or failing shot. A shot that passes on a retry is reported as flaky, not hidden.",
+          "type": "number",
+          "default": 2
+        },
+        "concurrency": {
+          "description": "Pages rendered in parallel within one capture job.",
+          "type": "number",
+          "default": 2
+        },
+        "waitForSelector": {
+          "description": "CSS selector that must exist before the frame is taken (for example a skeleton gone).",
+          "type": "string",
+          "default": ""
+        },
+        "hideSelectors": {
+          "description": "Selectors hidden with `visibility: hidden` (ads, timestamps, carousels).",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
+        },
+        "css": {
+          "description": "CSS injected into every page before the frame.",
+          "type": "string",
+          "default": ""
+        }
+      }
+    },
+    "compare": {
+      "description": "How a screenshot is compared with its baseline.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "threshold": {
+          "description": "Per-pixel perceptual tolerance, 0 (exact) to 1.",
+          "type": "number",
+          "default": 0.1
+        },
+        "maxDiffPixels": {
+          "description": "A shot fails when differing pixels exceed `max(maxDiffPixels, maxDiffPixelRatio x pixels)`.",
+          "type": "number",
+          "default": 0
+        },
+        "maxDiffPixelRatio": {
+          "description": "Fraction of pixels allowed to differ. A change of image size always fails.",
+          "type": "number",
+          "default": 0.0005
+        },
+        "overrides": {
+          "description": "Per-story tolerances: `[{ \"match\": \"button*\", \"maxDiffPixelRatio\": 0.01 }]`. Later entries win.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "object",
+            "required": [
+              "match"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "match": {
+                "description": "Pattern matched against story id, title and `title/name`."
+              },
+              "threshold": {
+                "description": "Per-pixel tolerance for matching stories."
+              },
+              "maxDiffPixels": {
+                "description": "Allowed differing pixels for matching stories."
+              },
+              "maxDiffPixelRatio": {
+                "description": "Allowed fraction of differing pixels for matching stories."
+              }
+            }
+          }
+        }
+      }
+    },
+    "shards": {
+      "description": "Capture jobs per browser: a number, or `auto` to size from `shotsPerShard`.",
+      "default": "auto",
+      "oneOf": [
+        {
+          "const": "auto"
+        },
+        {
+          "type": "integer",
+          "minimum": 1
+        }
+      ]
+    },
+    "shotsPerShard": {
+      "description": "Target screenshots per capture job when `shards` is `auto`.",
+      "type": "number",
+      "default": 400
+    },
+    "changed": {
+      "description": "How `mode: changed` (pull requests) picks stories.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "globalPatterns": {
+          "description": "Any changed file matching one of these selects every story (stylesheets, tokens, Storybook config, lockfiles).",
+          "type": "array",
+          "default": [
+            "*.css",
+            "*.scss",
+            "*.sass",
+            "*.less",
+            "*.pcss",
+            "*tokens*",
+            "*.storybook/*",
+            "package.json",
+            "package-lock.json",
+            "pnpm-lock.yaml",
+            "yarn.lock"
+          ],
+          "items": {
+            "type": "string"
+          }
+        },
+        "siblingDirectory": {
+          "description": "A changed file in the same directory as a story file selects that story. No module graph is built; this is a heuristic.",
+          "type": "boolean",
+          "default": true
+        }
+      }
+    },
+    "compat": {
+      "description": "The browserslist CSS compatibility check.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "description": "Run the check.",
+          "type": "boolean",
+          "default": true
+        },
+        "paths": {
+          "description": "Directories or files to scan for CSS (`.css`, and `<style>` in `.html`). Empty means the staged Storybook.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
+        },
+        "browserslist": {
+          "description": "Queries that replace the project's own browserslist config. Empty means use `.browserslistrc` / `package.json`.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
+        },
+        "fail": {
+          "description": "`unsupported` fails when a target lacks a feature, `partial` also on partial support, `never` only reports.",
+          "type": "string",
+          "default": "unsupported",
+          "enum": [
+            "unsupported",
+            "partial",
+            "never"
+          ]
+        },
+        "ignoreFeatures": {
+          "description": "caniuse feature ids to skip, for example `css-has`.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
+        },
+        "ignoreFiles": {
+          "description": "Patterns (`*` wildcard) of files to skip. Storybook's own UI assets are skipped by default.",
+          "type": "array",
+          "default": [
+            "*/sb-manager/*",
+            "*/sb-addons/*",
+            "*/sb-common-assets/*"
+          ],
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

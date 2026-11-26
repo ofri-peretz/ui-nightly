@@ -1,0 +1,12 @@
+{
+  "v": 5,
+  "entries": {
+    "button--primary": { "type": "story", "id": "button--primary", "name": "Primary", "title": "Button", "importPath": "./src/Button.stories.js", "tags": ["story"] },
+    "button--disabled": { "type": "story", "id": "button--disabled", "name": "Disabled", "title": "Button", "importPath": "./src/Button.stories.js", "tags": ["story"] },
+    "card--default": { "type": "story", "id": "card--default", "name": "Default", "title": "Card", "importPath": "./src/Card.stories.js", "tags": ["story"] },
+    "layout--responsive": { "type": "story", "id": "layout--responsive", "name": "Responsive", "title": "Layout", "importPath": "./src/Layout.stories.js", "tags": ["story"] },
+    "determinism--clock-random-motion": { "type": "story", "id": "determinism--clock-random-motion", "name": "Clock, random, motion", "title": "Determinism", "importPath": "./src/Determinism.stories.js", "tags": ["story"] },
+    "button--docs": { "type": "docs", "id": "button--docs", "name": "Docs", "title": "Button", "importPath": "./src/Button.mdx", "tags": ["docs"] },
+    "internal--scratch": { "type": "story", "id": "internal--scratch", "name": "Scratch", "title": "Internal", "importPath": "./src/Scratch.stories.js", "tags": ["story", "no-visual"] }
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "$schema": "../../schema.json",
+  "storybook": { "dir": "storybook-static" },
+  "browsers": ["chromium", "firefox", "webkit"],
+  "shards": 1,
+  "compat": { "browserslist": ["last 2 chrome versions", "last 2 firefox versions", "last 2 safari versions"] }
+}
