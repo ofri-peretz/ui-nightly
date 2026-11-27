@@ -75,6 +75,9 @@ jobs:
       working-directory: fixtures/storybook-app
       node-version: '22'
       baseline-branch: selftest-${{ github.run_id }}-${{ github.run_attempt }}
+      # `auto` never writes on a pull request, which would leave the throwaway branch empty: every
+      # later shot would be new and pass, and the detect job below could never go red.
+      baseline-write: always
       tool-repo: ${{ github.repository }}
       tool-ref: ${{ github.sha }}
       open-issue: false
