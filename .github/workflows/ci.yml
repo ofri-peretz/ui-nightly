@@ -72,6 +72,7 @@ jobs:
       issues: write
     uses: ./.github/workflows/nightly.yml
     with:
+      artifact-prefix: st-bootstrap
       working-directory: fixtures/storybook-app
       node-version: '22'
       baseline-branch: selftest-${{ github.run_id }}-${{ github.run_attempt }}
@@ -90,6 +91,7 @@ jobs:
       issues: write
     uses: ./.github/workflows/nightly.yml
     with:
+      artifact-prefix: st-compare
       working-directory: fixtures/storybook-app
       node-version: '22'
       baseline-branch: selftest-${{ github.run_id }}-${{ github.run_attempt }}
@@ -106,6 +108,7 @@ jobs:
       issues: write
     uses: ./.github/workflows/nightly.yml
     with:
+      artifact-prefix: st-detect
       working-directory: fixtures/storybook-app
       node-version: '22'
       # The same Storybook with one deliberate visual change appended to its built CSS.
@@ -127,6 +130,7 @@ jobs:
       issues: write
     uses: ./.github/workflows/nightly.yml
     with:
+      artifact-prefix: st-update
       working-directory: fixtures/storybook-app
       node-version: '22'
       # The very build the detect run reported as red, now with update-baselines: it must be green

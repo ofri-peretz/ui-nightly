@@ -200,6 +200,7 @@ Put `.ui-nightly.json` in the project (or point `config` at another path). Every
 | `base-ref` | pull request base, else the default branch | Base for `changed` |
 | `runs-on` | `ubuntu-24.04` | Runner. Baselines are only valid on the image that made them |
 | `max-parallel` | `6` | Parallel capture jobs |
+| `artifact-prefix` | `ui-nightly` | Prefix of the run's artifact names. Change it only when one workflow run calls ui-nightly more than once, so the calls do not read each other's results |
 | `baseline-branch` | `ui-baselines` | Branch that stores baselines |
 | `baseline-write` | `auto` | `auto` (not on pull requests), `always`, `never` |
 | `update-baselines` | `false` | Accept every changed screenshot |
