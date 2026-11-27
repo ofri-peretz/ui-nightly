@@ -60,6 +60,14 @@ Baselines are PNG files on an orphan branch of your repository (`ui-baselines` b
 - **Changed pixels** are never accepted automatically. Run the workflow with `update-baselines: true` after reading the report. The run then passes: the changed screenshots are the accepted baselines, listed in the job summary under "Accepted as the new baseline", and the nightly issue is closed as resolved. A full run with that flag also prunes baselines of stories that no longer exist. Errors, missing shards and compat failures still fail an update run, and a run that writes nothing (a pull request) still reports the diffs.
 - **Generate baselines in CI only.** Fonts and text rendering differ between operating systems and runner images. The workflow pins `ubuntu-24.04` (`runs-on`) so the image that wrote a baseline is the image that checks it.
 
+## Same bytes in, same pixels out
+
+A screenshot is only comparable with its baseline when the page is rendered from the same inputs. Beyond the page's own code, that means the fonts. Every shot records the font files it loaded (a short digest of their bytes). The baselines branch keeps that record per baseline in `environment.json`, written by the runs that write baselines: a bootstrap run, a run that adds new screenshots, and an update run (which records every screenshot that matches or is accepted). When failing screenshots loaded different font files than the run that made their baselines, the summary says so under "Fonts changed since the baselines" and names the files.
+
+Why it matters: a font fetched at build time (`next/font/google`, a Google Fonts `<link>`) is not part of your commit. Google can serve a different build of the same family to two builds of the same commit, and text then moves by a pixel on most pages in all three browsers. Nothing in the page is unsettled and no retry helps. Commit the font files (`next/font/local`, or `@font-face` rules next to the code) so the build is the same every night.
+
+Before the first frame the capture also loads `loading="lazy"` images (a browser that does not scroll never fetches them, and one of them blocked a capture for ever), waits until no font is loading for two frames in a row, and bounds each of these waits by `capture.timeoutMs`: an image that does not arrive fails the shot with its address.
+
 ## Faster runs
 
 | Lever | How |
@@ -120,7 +128,9 @@ Put `.ui-nightly.json` in the project (or point `config` at another path). Every
 | `capture.disableAnimations` | `true` | Disable CSS animations and transitions and hide the caret. |
 | `capture.reducedMotion` | `"reduce"` | `prefers-reduced-motion` for every profile (`reduce` or `no-preference`). A variant can override it. |
 | `capture.settleMs` | `100` | Pause after the page is ready, before the first frame. |
-| `capture.timeoutMs` | `30000` | Per-step timeout: navigation, story render, selector wait. |
+| `capture.waitForFonts` | `true` | Before the first frame, wait until no font is loading for two frames in a row. `document.fonts.ready` alone can resolve before layout has asked for a font. |
+| `capture.loadLazyImages` | `true` | Load `loading="lazy"` images and iframes before the frame and wait until they are decoded. A browser that does not scroll never fetches the ones below the fold; Firefox does not fetch them for a full-page capture. |
+| `capture.timeoutMs` | `30000` | Per-step timeout: navigation, story render, selector wait, images and fonts settling. |
 | `capture.stabilityTries` | `3` | Take frames until two in a row are identical, up to this many. 1 turns the check off. |
 | `capture.retries` | `2` | Extra attempts for a mismatching or failing shot. A shot that passes on a retry is reported as flaky, not hidden. |
 | `capture.concurrency` | `2` | Pages rendered in parallel within one capture job. |

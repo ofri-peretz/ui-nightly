@@ -101,6 +101,7 @@ branch because tens of thousands of PNGs would bloat every clone and every code 
 branch is cloned with depth 1, so the cost is the current set, not the history.
 
 - First run with no branch: every shot is `new`, passes, and (bootstrap) is written.
+- `environment.json` at the branch root records, per baseline, a digest of the font files the page loaded when the baseline was made. The report compares failing shots with it and names changed font files (a font fetched at build time can differ between builds of one commit).
 - Scheduled/dispatch runs with `baseline-write: auto` add new shots; `update-baselines: true`
   (a dispatch input) also accepts every changed shot. A person triggers that after reading the
   report. The run is green: an accepted shot is the new baseline, so it is listed as accepted and

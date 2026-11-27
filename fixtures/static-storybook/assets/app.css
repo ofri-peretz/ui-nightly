@@ -34,3 +34,5 @@ body { margin: 0; background: var(--bg); color: var(--fg); font: 1rem/1.5 system
 @supports (container-type: inline-size) {
   .card { container-type: inline-size; }
 }
+@font-face { font-family: UiNightlyFixture; src: url(fixture.ttf) format('truetype'); font-display: swap; }
+.fixture-font { font: 32px/1.2 UiNightlyFixture, monospace; margin: 0; }

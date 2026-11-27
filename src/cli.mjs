@@ -12,7 +12,7 @@ const HELP = `ui-nightly <command> [options]
   capture       --config F --browser chromium --shard 0 --shards 1 [--work ui-nightly-out] [--baselines DIR] [--out DIR] [--save-all]
   compat        --config F [--out compat.json] [--paths a,b]
   report        --config F --results DIR [--plan plan.json] [--compat compat.json] [--out DIR]
-                [--write-baselines DIR] [--update] [--prune] [--run-url URL] [--no-fail]
+                [--baselines DIR] [--write-baselines DIR] [--update] [--prune] [--run-url URL] [--no-fail]
 `;
 
 async function main() {
@@ -69,19 +69,20 @@ async function main() {
       // A compat check that was asked for but left no result is a failure, not a pass.
       const compatMissing = Boolean(cfg.compat.enabled && args.compat && !compat);
       const notes = compatMissing ? ['The CSS compatibility check produced no result. Treated as a failure.'] : [];
-      const md = summaryMarkdown(sum, { compat, runUrl: args.runUrl, plan, notes });
+      const baselinesDir = args.baselines ?? args.writeBaselines;
+      const md = summaryMarkdown(sum, { compat, runUrl: args.runUrl, plan, notes, baselines: baselinesDir ? resolve(baselinesDir) : null });
       const out = args.out ?? join(work, 'report');
       writeReport(out, sum, md, compat);
       if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, md + '\n');
       else console.log(md);
-      let changes = { added: 0, updated: 0, removed: 0 };
+      let changes = { added: 0, updated: 0, removed: 0, environment: 0 };
       if (args.writeBaselines) changes = writeBaselines(sum, resolve(args.writeBaselines), { update: Boolean(args.update), prune: Boolean(args.prune) });
       setOutput('regressions', String(sum.regressions));
       setOutput('accepted', String(sum.accepted));
       const bad = sum.failed || Boolean(compat?.failed) || compatMissing;
       setOutput('failed', String(bad));
-      setOutput('baseline_changes', String(changes.added + changes.updated + changes.removed));
-      log(`baselines: +${changes.added} ~${changes.updated} -${changes.removed}`);
+      setOutput('baseline_changes', String(changes.added + changes.updated + changes.removed + changes.environment));
+      log(`baselines: +${changes.added} ~${changes.updated} -${changes.removed}${changes.environment ? ' (font record changed)' : ''}`);
       return bad && !args.noFail ? 1 : 0;
     }
     default:
