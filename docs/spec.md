@@ -103,7 +103,9 @@ branch is cloned with depth 1, so the cost is the current set, not the history.
 - First run with no branch: every shot is `new`, passes, and (bootstrap) is written.
 - Scheduled/dispatch runs with `baseline-write: auto` add new shots; `update-baselines: true`
   (a dispatch input) also accepts every changed shot. A person triggers that after reading the
-  report. Pull-request runs never write.
+  report. The run is green: an accepted shot is the new baseline, so it is listed as accepted and
+  not counted as a regression, and the issue is closed as resolved. Errors, missing results and
+  compat failures are not accepted, and a run that writes nothing accepts nothing. Pull-request runs never write.
 - Layout: `<browser>/<viewport>/<variant>/<story-id>.png`.
 
 Considered and not done: Git LFS (a second service to configure, and a billing surface),

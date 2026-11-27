@@ -11,6 +11,7 @@ import { FEATURES, detect } from '../src/features.mjs';
 import { evaluate, scanFiles, supportTable } from '../src/compat.mjs';
 import { contextOptions, storyUrl, overridesFor } from '../src/capture.mjs';
 import { globMatch } from '../src/util.mjs';
+import { summarize, summaryMarkdown } from '../src/report.mjs';
 
 const require = createRequire(import.meta.url);
 
@@ -195,4 +196,37 @@ test('examples validate', () => {
   for (const f of ['examples/ui-nightly.json', 'examples/site-pages.json', 'fixtures/storybook-app/.ui-nightly.json']) {
     assert.deepEqual(validate(JSON.parse(readFileSync(new URL(`../${f}`, import.meta.url), 'utf8'))), [], f);
   }
+});
+
+// An update run that writes baselines accepts the changed screenshots; nothing else is excused.
+const shot = (status, over = {}) => ({ status, key: `${status}-${over.n ?? 0}`, rel: `chromium/phone/light/${status}.png`, actual: `${status}.png`, title: 'T', name: 'N', browser: 'chromium', viewport: 'phone', variant: 'light', diffPixels: 9, ratio: 0.01, attempts: 1, ...over });
+const shard = (...results) => ({ dir: '/tmp/x', seconds: 1, results });
+
+test('a normal run with changed screenshots is red', () => {
+  const sum = summarize([shard(shot('passed'), shot('failed'))], null);
+  assert.equal(sum.failed, true);
+  assert.equal(sum.regressions, 1);
+  assert.equal(sum.accepted, 0);
+  assert.match(summaryMarkdown(sum), /Regressions found/);
+});
+
+test('an update run that writes baselines is green and lists what it accepted', () => {
+  const sum = summarize([shard(shot('passed'), shot('failed', { n: 1 }), shot('failed', { n: 2 }))], null, { accept: true });
+  assert.equal(sum.failed, false);
+  assert.equal(sum.regressions, 0);
+  assert.equal(sum.accepted, 2);
+  assert.ok(sum.all.filter((r) => r.accepted).every((r) => r.status === 'failed'), 'still writable as baselines');
+  const md = summaryMarkdown(sum);
+  assert.match(md, /Baselines updated/);
+  assert.match(md, /Accepted as the new baseline/);
+  assert.doesNotMatch(md, /### Regressions|Regressions found/);
+});
+
+test('an update run still fails on what cannot be accepted', () => {
+  const error = summarize([shard(shot('error', { actual: undefined, error: 'boom' }), shot('failed', { n: 1 }))], null, { accept: true });
+  assert.equal(error.failed, true, 'an error has no screenshot to accept');
+  assert.equal(error.regressions, 1);
+  const missing = summarize([shard(shot('failed'))], { shots: 3, matrix: [{}, {}] }, { accept: true });
+  assert.equal(missing.failed, true, 'missing results and shards stay failures');
+  assert.equal(summarize([shard(shot('failed', { actual: undefined }))], null, { accept: true }).failed, true, 'no image, nothing to accept');
 });

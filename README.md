@@ -57,7 +57,7 @@ Baselines are PNG files on an orphan branch of your repository (`ui-baselines` b
 - **Why a branch.** Artifacts expire (90 days by default), cannot be diffed or reviewed, and a quiet repository would lose its baseline. Files on your main branch would bloat every clone and review. A branch is versioned, free and never expires, and the workflow clones it at depth 1, so the cost is the current set and not its history.
 - **First run**: no branch yet, so every shot is `new`; the branch is created and filled.
 - **New stories** are added to the branch by scheduled and manual runs (`baseline-write: auto`). Pull-request runs never write.
-- **Changed pixels** are never accepted automatically. Run the workflow with `update-baselines: true` after reading the report. A full run with that flag also prunes baselines of stories that no longer exist.
+- **Changed pixels** are never accepted automatically. Run the workflow with `update-baselines: true` after reading the report. The run then passes: the changed screenshots are the accepted baselines, listed in the job summary under "Accepted as the new baseline", and the nightly issue is closed as resolved. A full run with that flag also prunes baselines of stories that no longer exist. Errors, missing shards and compat failures still fail an update run, and a run that writes nothing (a pull request) still reports the diffs.
 - **Generate baselines in CI only.** Fonts and text rendering differ between operating systems and runner images. The workflow pins `ubuntu-24.04` (`runs-on`) so the image that wrote a baseline is the image that checks it.
 
 ## Faster runs
@@ -200,6 +200,7 @@ Put `.ui-nightly.json` in the project (or point `config` at another path). Every
 | `base-ref` | pull request base, else the default branch | Base for `changed` |
 | `runs-on` | `ubuntu-24.04` | Runner. Baselines are only valid on the image that made them |
 | `max-parallel` | `6` | Parallel capture jobs |
+| `artifact-prefix` | `ui-nightly` | Prefix of the run's artifact names. Change it only when one workflow run calls ui-nightly more than once, so the calls do not read each other's results |
 | `baseline-branch` | `ui-baselines` | Branch that stores baselines |
 | `baseline-write` | `auto` | `auto` (not on pull requests), `always`, `never` |
 | `update-baselines` | `false` | Accept every changed screenshot |

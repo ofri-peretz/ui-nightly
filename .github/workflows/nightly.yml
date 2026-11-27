@@ -52,6 +52,10 @@ on:
         description: Maximum parallel capture jobs.
         type: number
         default: 6
+      artifact-prefix:
+        description: Prefix of this run's artifact names. Change it only when one workflow run calls ui-nightly more than once, so the calls do not read each other's results.
+        type: string
+        default: ui-nightly
       baseline-branch:
         description: Branch of the caller's repository that stores the baselines. Created on first run.
         type: string
@@ -91,6 +95,9 @@ on:
       failed:
         description: "true when the run found a regression or a compat failure."
         value: ${{ jobs.report.outputs.failed }}
+      accepted:
+        description: Number of changed screenshots an update run accepted as the new baseline.
+        value: ${{ jobs.report.outputs.accepted }}
 
 defaults:
   run:
@@ -156,7 +163,7 @@ jobs:
         if: steps.plan.outputs.shots != '0'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: ui-nightly-build
+          name: ${{ inputs.artifact-prefix }}-build
           path: ${{ runner.temp }}/ui-nightly-build.tgz
           retention-days: 2
 
@@ -189,7 +196,7 @@ jobs:
       - name: Restore the build
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          name: ui-nightly-build
+          name: ${{ inputs.artifact-prefix }}-build
           path: ${{ runner.temp }}/build
       - name: Unpack the build
         working-directory: ${{ inputs.working-directory }}
@@ -231,7 +238,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: ui-nightly-results-${{ matrix.browser }}-${{ matrix.shard }}
+          name: ${{ inputs.artifact-prefix }}-results-${{ matrix.browser }}-${{ matrix.shard }}
           path: ${{ inputs.working-directory }}/ui-nightly-out/results-${{ matrix.browser }}-${{ matrix.shard }}
           retention-days: 7
           if-no-files-found: warn
@@ -261,7 +268,7 @@ jobs:
       - name: Restore the build
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          name: ui-nightly-build
+          name: ${{ inputs.artifact-prefix }}-build
           path: ${{ runner.temp }}/build
       - name: Unpack the build
         working-directory: ${{ inputs.working-directory }}
@@ -278,7 +285,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: ui-nightly-compat
+          name: ${{ inputs.artifact-prefix }}-compat
           path: ${{ inputs.working-directory }}/ui-nightly-out/compat/compat.json
           retention-days: 7
           if-no-files-found: ignore
@@ -293,6 +300,7 @@ jobs:
       issues: write
     outputs:
       regressions: ${{ steps.report.outputs.regressions }}
+      accepted: ${{ steps.report.outputs.accepted }}
       failed: ${{ steps.report.outputs.failed }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -313,7 +321,7 @@ jobs:
         if: needs.build.outputs.shots != '0'
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          name: ui-nightly-build
+          name: ${{ inputs.artifact-prefix }}-build
           path: ${{ runner.temp }}/build
       - name: Unpack the plan
         if: needs.build.outputs.shots != '0'
@@ -323,13 +331,13 @@ jobs:
         if: needs.build.outputs.shots != '0'
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          pattern: ui-nightly-results-*
+          pattern: ${{ inputs.artifact-prefix }}-results-*
           path: ${{ inputs.working-directory }}/ui-nightly-out/results
       - name: Download compat result
         if: needs.build.outputs.shots != '0'
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          name: ui-nightly-compat
+          name: ${{ inputs.artifact-prefix }}-compat
           path: ${{ inputs.working-directory }}/ui-nightly-out/compat
         continue-on-error: true
       - name: Fetch baselines
@@ -378,7 +386,7 @@ jobs:
           if [ "${{ needs.build.outputs.shots }}" = "0" ]; then
             echo "## UI nightly: nothing to check" >> "$GITHUB_STEP_SUMMARY"
             echo "No stories or pages were selected (changed mode with no affected stories, or an empty include list)." >> "$GITHUB_STEP_SUMMARY"
-            echo "regressions=0" >> "$GITHUB_OUTPUT"; echo "failed=false" >> "$GITHUB_OUTPUT"
+            echo "regressions=0" >> "$GITHUB_OUTPUT"; echo "accepted=0" >> "$GITHUB_OUTPUT"; echo "failed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           if [ "$WRITE" = "true" ]; then
@@ -411,7 +419,7 @@ jobs:
         if: always() && needs.build.outputs.shots != '0'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: ui-nightly-report
+          name: ${{ inputs.artifact-prefix }}-report
           path: ${{ inputs.working-directory }}/ui-nightly-out/report
           retention-days: 30
           if-no-files-found: ignore
@@ -422,6 +430,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           FAILED: ${{ steps.report.outputs.failed }}
+          ACCEPTED: ${{ steps.report.outputs.accepted }}
           LABEL: ${{ inputs.issue-label }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
@@ -435,11 +444,13 @@ jobs:
               gh issue create --title "$title" --label "$LABEL" --body-file "$RUNNER_TEMP/issue.md"
             fi
           elif [ -n "$num" ]; then
-            gh issue comment "$num" --body "Green again: $RUN_URL"
+            if [ "${ACCEPTED:-0}" != "0" ]; then note="Resolved: $ACCEPTED changed screenshot(s) were accepted as the new baseline (see the job summary): $RUN_URL"
+            else note="Green again: $RUN_URL"; fi
+            gh issue comment "$num" --body "$note"
             gh issue close "$num"
           fi
       - name: Fail on regression
         if: inputs.fail-on-regression && steps.report.outputs.failed == 'true'
         run: |
-          echo "::error::ui-nightly found regressions. See the job summary and the ui-nightly-report artifact."
+          echo "::error::ui-nightly found regressions. See the job summary and the ${{ inputs.artifact-prefix }}-report artifact."
           exit 1
