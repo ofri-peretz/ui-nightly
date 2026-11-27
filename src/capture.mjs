@@ -2,6 +2,7 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { createRequire } from 'node:module';
+import { fontEntries, fontSetId } from './environment.mjs';
 import { comparePng, withinTolerance } from './diff.mjs';
 import { pickShard, profiles } from './plan.mjs';
 import { serveStatic, startCommandServer } from './server.mjs';
@@ -61,6 +62,33 @@ export function overridesFor(entry, cfg) {
   return out;
 }
 
+// Everything the frame depends on that the browser loads by itself: images (a lazy one below the fold
+// is never fetched by a browser that does not scroll, and waiting for it would wait for ever), and fonts
+// (document.fonts.ready can resolve before layout has asked for the font, so ask again until two frames
+// in a row have nothing loading). Every wait is bounded; an image that does not arrive fails the shot
+// with its address instead of hanging the job.
+async function settle(page, c) {
+  const left = await page.evaluate(async ({ lazy, fonts, ms }) => {
+    const frame = () => new Promise((r) => requestAnimationFrame(() => r()));
+    const until = Date.now() + ms;
+    const within = (p) => Promise.race([p, new Promise((r) => setTimeout(r, Math.max(0, until - Date.now())))]);
+    if (lazy) for (const el of document.querySelectorAll('img[loading="lazy"], iframe[loading="lazy"]')) el.loading = 'eager';
+    await within(document.fonts.ready);
+    const waiting = [...document.images].filter((i) => !i.complete);
+    await within(Promise.all(waiting.map((i) => new Promise((r) => { i.addEventListener('load', r, { once: true }); i.addEventListener('error', r, { once: true }); }))));
+    if (lazy) await within(Promise.all([...document.images].map((i) => i.decode().catch(() => {}))));
+    if (fonts) {
+      for (let quiet = 0; quiet < 2 && Date.now() < until;) {
+        await within(document.fonts.ready);
+        await frame();
+        if ([...document.fonts].some((f) => f.status === 'loading')) quiet = 0; else quiet++;
+      }
+    }
+    return [...document.images].filter((i) => !i.complete).map((i) => i.currentSrc || i.src).slice(0, 3);
+  }, { lazy: c.loadLazyImages, fonts: c.waitForFonts, ms: c.timeoutMs });
+  if (left.length) throw new Error(`images still loading after ${c.timeoutMs} ms: ${left.join(', ')}`);
+}
+
 async function prepare(page, entry, variant, cfg) {
   const c = cfg.capture;
   if (entry.kind === 'story') {
@@ -87,10 +115,7 @@ async function prepare(page, entry, variant, cfg) {
     c.css, variant.css ?? '',
   ].filter(Boolean).join('\n');
   if (css) await page.addStyleTag({ content: css });
-  await page.evaluate(async () => {
-    await document.fonts.ready;
-    await Promise.all([...document.images].map((i) => (i.complete ? null : new Promise((r) => { i.onload = i.onerror = r; }))));
-  });
+  await settle(page, c);
   if (c.settleMs) await page.waitForTimeout(c.settleMs);
 }
 
@@ -111,6 +136,12 @@ async function attempt(browser, shot, cfg, ctxOpts, url) {
   try {
     if (cfg.capture.seedRandom) await context.addInitScript(SEED_SCRIPT);
     const page = await context.newPage();
+    const fontFiles = [];
+    const fontReads = [];
+    page.on('response', (res) => {
+      if (res.request().resourceType() !== 'font') return;
+      fontReads.push(res.body().then((body) => fontFiles.push({ url: res.url(), body }), () => {}));
+    });
     if (cfg.capture.fixedTime) await page.clock.setFixedTime(new Date(cfg.capture.fixedTime));
     page.setDefaultTimeout(cfg.capture.timeoutMs);
     await page.goto(url, { waitUntil: 'load', timeout: cfg.capture.timeoutMs });
@@ -124,7 +155,9 @@ async function attempt(browser, shot, cfg, ctxOpts, url) {
       prev = next;
     }
     if (cfg.capture.stabilityTries <= 1) stable = true;
-    return { buf: prev, unstable: !stable };
+    await Promise.all(fontReads);
+    const fonts = fontEntries(fontFiles);
+    return { buf: prev, unstable: !stable, fonts };
   } finally {
     await context.close();
   }
@@ -152,6 +185,7 @@ async function runShot(browser, shot, cfg, io, devices, bases) {
       const r = await attempt(browser, shot, cfg, ctxOpts, url);
       last = r;
       result.unstable = r.unstable;
+      if (r.fonts.length) { result.fonts = fontSetId(r.fonts); io.fontSets[result.fonts] = r.fonts; }
       delete result.error;
       if (!baseline) { result.status = 'new'; break; }
       const cmp = comparePng(baseline, r.buf, { threshold: tol.threshold });
@@ -185,7 +219,7 @@ export async function capture(cfg, opts) {
   const plan = JSON.parse(readFileSync(opts.plan, 'utf8'));
   const entries = pickShard(plan.entries, opts.shard, opts.shards);
   const profs = profiles(cfg, opts.browser);
-  const io = { baselines: opts.baselines, out: opts.out, saveAll: Boolean(opts.saveAll) };
+  const io = { baselines: opts.baselines, out: opts.out, saveAll: Boolean(opts.saveAll), fontSets: {} };
 
   const bases = {};
   const closers = [];
@@ -236,7 +270,7 @@ export async function capture(cfg, opts) {
   const seconds = (Date.now() - t0) / 1000;
   const out = {
     browser: opts.browser, shard: opts.shard, shards: opts.shards, playwright: require('playwright-core/package.json').version,
-    seconds: Number(seconds.toFixed(1)), shots: results.length, results,
+    seconds: Number(seconds.toFixed(1)), shots: results.length, fontSets: io.fontSets, results,
   };
   writeFile(join(opts.out, 'results.json'), JSON.stringify(out, null, 1));
   log(`done: ${results.length} shots in ${seconds.toFixed(1)}s (${(results.length / Math.max(seconds, 0.001)).toFixed(1)} shots/s)`);

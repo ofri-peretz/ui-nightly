@@ -289,8 +289,18 @@
           "type": "number",
           "default": 100
         },
+        "waitForFonts": {
+          "description": "Before the first frame, wait until no font is loading for two frames in a row. `document.fonts.ready` alone can resolve before layout has asked for a font.",
+          "type": "boolean",
+          "default": true
+        },
+        "loadLazyImages": {
+          "description": "Load `loading=\"lazy\"` images and iframes before the frame and wait until they are decoded. A browser that does not scroll never fetches the ones below the fold; Firefox does not fetch them for a full-page capture.",
+          "type": "boolean",
+          "default": true
+        },
         "timeoutMs": {
-          "description": "Per-step timeout: navigation, story render, selector wait.",
+          "description": "Per-step timeout: navigation, story render, selector wait, images and fonts settling.",
           "type": "number",
           "default": 30000
         },

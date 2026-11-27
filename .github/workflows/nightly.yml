@@ -382,7 +382,8 @@ jobs:
         run: |
           mkdir -p ui-nightly-out/results ui-nightly-out/compat
           args=(--config "${{ inputs.config }}" --results ui-nightly-out/results --plan ui-nightly-out/plan.json
-                --compat ui-nightly-out/compat/compat.json --out ui-nightly-out/report --run-url "$RUN_URL" --no-fail)
+                --compat ui-nightly-out/compat/compat.json --out ui-nightly-out/report --run-url "$RUN_URL" --no-fail
+                --baselines ui-nightly-out/baselines)
           if [ "${{ needs.build.outputs.shots }}" = "0" ]; then
             echo "## UI nightly: nothing to check" >> "$GITHUB_STEP_SUMMARY"
             echo "No stories or pages were selected (changed mode with no affected stories, or an empty include list)." >> "$GITHUB_STEP_SUMMARY"

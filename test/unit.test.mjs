@@ -12,6 +12,7 @@ import { evaluate, scanFiles, supportTable } from '../src/compat.mjs';
 import { contextOptions, storyUrl, overridesFor } from '../src/capture.mjs';
 import { globMatch } from '../src/util.mjs';
 import { summarize, summaryMarkdown } from '../src/report.mjs';
+import { fontEntries, fontSetId, fontDrift, fontDriftMarkdown, emptyEnvironment, recordShot } from '../src/environment.mjs';
 
 const require = createRequire(import.meta.url);
 
@@ -108,18 +109,19 @@ test('plan: browsers filters shrink the profile set per engine', () => {
   assert.equal(profiles(cfg, 'chromium').length, 12);
   assert.equal(profiles(cfg, 'webkit').length, 9);
   const plan = buildPlan(cfg, { storybookDir: 'fixtures/static-storybook' });
-  assert.equal(plan.shotsPerBrowser.chromium, 60);
-  assert.equal(plan.shotsPerBrowser.webkit, 45);
-  assert.equal(plan.matrix.filter((m) => m.browser === 'chromium').length, 6);
-  assert.equal(plan.matrix.filter((m) => m.browser === 'webkit').length, 5);
+  const n = plan.entries.length; // the fixture grows with the checks that need a story
+  assert.equal(plan.shotsPerBrowser.chromium, 12 * n);
+  assert.equal(plan.shotsPerBrowser.webkit, 9 * n);
+  assert.equal(plan.matrix.filter((m) => m.browser === 'chromium').length, Math.ceil(12 * n / 10));
+  assert.equal(plan.matrix.filter((m) => m.browser === 'webkit').length, Math.ceil(9 * n / 10));
 });
 
 test('plan: builds from the fixture storybook, 3 browsers x shards', () => {
   const cfg = merge(DEFAULTS, { browsers: ['chromium', 'firefox', 'webkit'], shards: 2 });
   const plan = buildPlan(cfg, { storybookDir: 'fixtures/static-storybook' });
-  assert.equal(plan.entries.length, 5); // docs entry and no-visual tag are skipped
+  assert.equal(plan.entries.length, 7); // docs entry and no-visual tag are skipped
   assert.equal(plan.matrix.length, 6);
-  assert.equal(plan.shots, 5 * 12 * 3);
+  assert.equal(plan.shots, 7 * 12 * 3);
 });
 
 test('capture: device presets, zoom, firefox isMobile, globals url, overrides', async () => {
@@ -229,4 +231,44 @@ test('an update run still fails on what cannot be accepted', () => {
   const missing = summarize([shard(shot('failed'))], { shots: 3, matrix: [{}, {}] }, { accept: true });
   assert.equal(missing.failed, true, 'missing results and shards stay failures');
   assert.equal(summarize([shard(shot('failed', { actual: undefined }))], null, { accept: true }).failed, true, 'no image, nothing to accept');
+});
+
+test('environment: a font set is the same for the same bytes and different for other bytes', () => {
+  const a = fontEntries([{ url: 'http://x/_next/static/media/n.woff2', body: Buffer.from('one') }]);
+  const again = fontEntries([{ url: 'http://y/other/path/n.woff2', body: Buffer.from('one') }]);
+  const b = fontEntries([{ url: 'http://x/_next/static/media/n.woff2', body: Buffer.from('two') }]);
+  assert.deepEqual(a, again);
+  assert.notDeepEqual(a, b);
+  assert.notEqual(fontSetId(a), fontSetId(b));
+  assert.equal(fontSetId(a), fontSetId([...a]));
+});
+
+test('environment: only failing shots whose baseline loaded other fonts count as drift', () => {
+  const env = emptyEnvironment();
+  const was = ['n.woff2:aaaaaaaaaa', 'h.woff2:cccccccccc'];
+  const now = ['n.woff2:bbbbbbbbbb', 'h.woff2:cccccccccc'];
+  recordShot(env, 'a.png', 'S1', was);
+  recordShot(env, 'b.png', 'S1', was);
+  recordShot(env, 'c.png', 'S1', was);
+  const fontSets = { S1: was, S2: now };
+  const failing = [
+    { rel: 'a.png', fonts: 'S2' }, // drifted
+    { rel: 'b.png', fonts: 'S1' }, // same fonts: a real regression
+    { rel: 'd.png', fonts: 'S2' }, // no record of its baseline
+    { rel: 'c.png' }, // no fonts captured
+  ];
+  const d = fontDrift(failing, fontSets, env);
+  assert.deepEqual(d.drifted.map((r) => r.rel), ['a.png']);
+  assert.deepEqual(d.removed, ['n.woff2:aaaaaaaaaa']);
+  assert.deepEqual(d.added, ['n.woff2:bbbbbbbbbb']);
+  assert.equal(d.failing, 4);
+  assert.match(fontDriftMarkdown(d), /1 of 4 failing screenshots loaded different font files/);
+  assert.equal(fontDriftMarkdown(fontDrift(failing.slice(1), fontSets, env)), '');
+});
+
+test('config: the settling switches are on by default and typed', () => {
+  assert.equal(DEFAULTS.capture.waitForFonts, true);
+  assert.equal(DEFAULTS.capture.loadLazyImages, true);
+  assert.ok(validate({ capture: { waitForFonts: 'yes' } }).length > 0);
+  assert.deepEqual(validate({ capture: { waitForFonts: false, loadLazyImages: false } }), []);
 });

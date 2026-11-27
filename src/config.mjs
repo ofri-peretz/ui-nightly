@@ -48,6 +48,8 @@ export const DEFAULTS = {
     disableAnimations: true,
     reducedMotion: 'reduce',
     settleMs: 100,
+    waitForFonts: true,
+    loadLazyImages: true,
     timeoutMs: 30000,
     stabilityTries: 3,
     retries: 2,

@@ -3,6 +3,7 @@ import { readFileSync, existsSync, copyFileSync, rmSync, mkdirSync } from 'node:
 import { join, dirname } from 'node:path';
 import { walk, writeFile } from './util.mjs';
 import { compatMarkdown } from './compat.mjs';
+import { readEnvironment, recordShot, forgetShot, writeEnvironment, fontDrift, fontDriftMarkdown } from './environment.mjs';
 
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const STATUSES = ['passed', 'new', 'flaky', 'failed', 'error'];
@@ -38,8 +39,9 @@ export function summarize(shards, plan, { accept = false } = {}) {
   const seconds = shards.reduce((a, s) => a + s.seconds, 0);
   const accepted = all.filter((r) => r.accepted).length;
   const regressions = counts.failed + counts.error - accepted;
+  const fontSets = Object.assign({}, ...shards.map((sh) => sh.fontSets ?? {}));
   return {
-    total: all.length, expected, missing, missingShards, counts, regressions, accepted, seconds: Number(seconds.toFixed(1)),
+    fontSets, total: all.length, expected, missing, missingShards, counts, regressions, accepted, seconds: Number(seconds.toFixed(1)),
     unstable: all.filter((r) => r.unstable).length, all,
     failed: regressions > 0 || missing > 0 || missingShards > 0,
   };
@@ -58,7 +60,7 @@ function cell(rs) {
   return 'ok';
 }
 
-export function summaryMarkdown(sum, { compat, runUrl, plan, notes = [] } = {}) {
+export function summaryMarkdown(sum, { compat, runUrl, plan, notes = [], baselines = null } = {}) {
   const c = sum.counts;
   const out = [];
   const verdict = sum.failed || compat?.failed || notes.length ? 'Regressions found' : sum.accepted ? 'Baselines updated' : 'No regressions';
@@ -105,6 +107,10 @@ export function summaryMarkdown(sum, { compat, runUrl, plan, notes = [] } = {}) 
     }
     if (bad.length > 100) out.push('', `_and ${bad.length - 100} more in results.json_`);
     out.push('');
+  }
+  if (baselines) {
+    const drift = fontDrift(bad, sum.fontSets, readEnvironment(baselines));
+    if (drift.drifted.length) out.push(fontDriftMarkdown(drift));
   }
   const flaky = sum.all.filter((r) => r.status === 'flaky');
   if (flaky.length) {
@@ -172,16 +178,24 @@ export function writeReport(outDir, sum, markdown, compat) {
   }
 }
 
-/** Copy accepted screenshots into a baselines checkout. Returns counts. */
+/**
+ * Copy accepted screenshots into a baselines checkout. Returns counts. `environment` is 1 when
+ * environment.json (the font files each baseline was made with) changed. An update run records it for
+ * every shot that matches or was accepted: it is the deliberate statement that this is the state.
+ */
 export function writeBaselines(sum, baselinesDir, { update = false, prune = false } = {}) {
   let added = 0, updated = 0, removed = 0;
+  const env = readEnvironment(baselinesDir);
+  const entries = (r) => sum.fontSets[r.fonts] ?? [];
   for (const r of sum.all) {
     const take = r.status === 'new' || (update && r.status === 'failed');
+    if (update && r.status === 'passed') recordShot(env, r.rel, r.fonts, entries(r));
     if (!take || !r.actual) continue;
     const dest = join(baselinesDir, r.rel);
     const existed = existsSync(dest);
     mkdirSync(dirname(dest), { recursive: true });
     copyFileSync(join(r._dir, r.actual), dest);
+    recordShot(env, r.rel, r.fonts, entries(r));
     if (existed) updated++; else added++;
   }
   if (prune) {
@@ -189,10 +203,10 @@ export function writeBaselines(sum, baselinesDir, { update = false, prune = fals
     for (const b of new Set(sum.all.map((r) => r.browser))) {
       for (const f of walk(join(baselinesDir, b), (x) => x.endsWith('.png'))) {
         const rel = f.slice(baselinesDir.length + 1);
-        if (!keep.has(rel)) { rmSync(f); removed++; }
+        if (!keep.has(rel)) { rmSync(f); forgetShot(env, rel); removed++; }
       }
     }
   }
-  return { added, updated, removed };
+  const environment = writeEnvironment(baselinesDir, env) ? 1 : 0;
+  return { added, updated, removed, environment };
 }
-

@@ -23,6 +23,8 @@
     'button--disabled': '<div class="pad"><button class="btn btn-primary" disabled>Save changes</button></div>',
     'card--default': '<div class="pad"><article class="card"><h2 class="card-title">Quarterly report</h2><p>Revenue grew across every region, with the strongest quarter in two years.</p><div class="card-actions"><button class="btn btn-primary">Open</button><button class="btn">Share</button></div></article></div>',
     'layout--responsive': '<div class="pad"><div class="grid">' + [1, 2, 3, 4, 5, 6].map(function (n) { return '<div class="tile">Tile ' + n + '</div>'; }).join('') + '</div></div>',
+    'fonts--webfont': '<div class="pad"><p class="fixture-font">Hello fixture font 123</p></div>',
+    'settling--lazy-image': '<div class="pad"><div style="height:3000px">Scroll down</div><img class="lazy-block" loading="lazy" src="assets/block.png" width="200" height="100" alt=""></div>',
     'determinism--clock-random-motion': '<div class="pad"><p>Date: <span id="d"></span></p><p>Random: <span id="r"></span></p><div class="spinner"></div></div>'
   };
   var root = document.getElementById('storybook-root');
