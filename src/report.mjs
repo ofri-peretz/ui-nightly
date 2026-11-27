@@ -18,8 +18,17 @@ export function loadResults(dir) {
   return shards;
 }
 
-export function summarize(shards, plan) {
-  const all = shards.flatMap((s) => s.results.map((r) => ({ ...r, _dir: s.dir })));
+/**
+ * `accept` is an update run that is writing baselines: a changed screenshot ("failed") IS the new
+ * baseline then, so it is listed as accepted instead of counted as a regression. An error has no
+ * screenshot to accept and stays a failure, as do missing shards and results.
+ */
+export function summarize(shards, plan, { accept = false } = {}) {
+  const all = shards.flatMap((s) => s.results.map((r) => ({
+    ...r,
+    _dir: s.dir,
+    ...(accept && r.status === 'failed' && r.actual ? { accepted: true } : {}),
+  })));
   const counts = Object.fromEntries(STATUSES.map((s) => [s, 0]));
   for (const r of all) counts[r.status]++;
   const expected = plan?.shots ?? null;
@@ -27,9 +36,10 @@ export function summarize(shards, plan) {
   const expectedShards = plan?.matrix?.length ?? null;
   const missingShards = expectedShards === null ? 0 : Math.max(0, expectedShards - shards.length);
   const seconds = shards.reduce((a, s) => a + s.seconds, 0);
-  const regressions = counts.failed + counts.error;
+  const accepted = all.filter((r) => r.accepted).length;
+  const regressions = counts.failed + counts.error - accepted;
   return {
-    total: all.length, expected, missing, missingShards, counts, regressions, seconds: Number(seconds.toFixed(1)),
+    total: all.length, expected, missing, missingShards, counts, regressions, accepted, seconds: Number(seconds.toFixed(1)),
     unstable: all.filter((r) => r.unstable).length, all,
     failed: regressions > 0 || missing > 0 || missingShards > 0,
   };
@@ -37,8 +47,10 @@ export function summarize(shards, plan) {
 
 function cell(rs) {
   if (!rs.length) return '-';
-  const bad = rs.filter((r) => r.status === 'failed' || r.status === 'error');
+  const bad = rs.filter((r) => (r.status === 'failed' || r.status === 'error') && !r.accepted);
   if (bad.length) return `**${bad.length} diff**`;
+  const taken = rs.filter((r) => r.accepted).length;
+  if (taken) return `${taken} accepted`;
   const flaky = rs.filter((r) => r.status === 'flaky').length;
   const fresh = rs.filter((r) => r.status === 'new').length;
   if (flaky) return `${flaky} flaky`;
@@ -49,9 +61,9 @@ function cell(rs) {
 export function summaryMarkdown(sum, { compat, runUrl, plan, notes = [] } = {}) {
   const c = sum.counts;
   const out = [];
-  const verdict = sum.failed || compat?.failed || notes.length ? 'Regressions found' : 'No regressions';
+  const verdict = sum.failed || compat?.failed || notes.length ? 'Regressions found' : sum.accepted ? 'Baselines updated' : 'No regressions';
   out.push(`## UI nightly: ${verdict}`, '');
-  out.push(`${sum.total} screenshots in ${sum.seconds}s of runner time: ${c.passed} passed, ${c.failed} failed, ${c.error} errors, ${c.flaky} flaky, ${c.new} new.`);
+  out.push(`${sum.total} screenshots in ${sum.seconds}s of runner time: ${c.passed} passed, ${c.failed} failed, ${c.error} errors, ${c.flaky} flaky, ${c.new} new${sum.accepted ? `, ${sum.accepted} accepted as the new baseline` : ''}.`);
   if (sum.missing || sum.missingShards) out.push('', `**${sum.missingShards} shard(s) produced no results (${sum.missing} screenshots missing).** Treated as a failure: a green run must account for every screenshot.`);
   if (sum.unstable) out.push('', `${sum.unstable} screenshot(s) never settled (two identical frames in a row); they are marked unstable in results.json.`);
   for (const n of [...(plan?.notes ?? []), ...notes]) out.push('', `_${n}_`);
@@ -72,7 +84,17 @@ export function summaryMarkdown(sum, { compat, runUrl, plan, notes = [] } = {}) 
     out.push('');
   }
 
-  const bad = sum.all.filter((r) => r.status === 'failed' || r.status === 'error');
+  const bad = sum.all.filter((r) => (r.status === 'failed' || r.status === 'error') && !r.accepted);
+  const taken = sum.all.filter((r) => r.accepted);
+  if (taken.length) {
+    out.push('### Accepted as the new baseline (update run)', '', '| Story | Browser | Viewport | Variant | Change |', '| :-- | :-- | :-- | :-- | :-- |');
+    for (const r of taken.slice(0, 100)) {
+      const what = r.sizeChanged ? `size ${r.expectedSize.width}x${r.expectedSize.height} to ${r.width}x${r.height}` : `${r.diffPixels} px (${(r.ratio * 100).toFixed(2)}%)`;
+      out.push(`| ${r.title} / ${r.name} | ${r.browser} | ${r.viewport} | ${r.variant} | ${what} |`);
+    }
+    if (taken.length > 100) out.push('', `_and ${taken.length - 100} more in results.json_`);
+    out.push('');
+  }
   if (bad.length) {
     out.push('### Regressions', '', '| Story | Browser | Viewport | Variant | Result |', '| :-- | :-- | :-- | :-- | :-- |');
     for (const r of bad.slice(0, 100)) {
@@ -125,7 +147,7 @@ details{border:1px solid var(--bd);border-radius:6px;padding:.5rem .75rem;margin
 img{max-width:100%;height:auto;border:1px solid var(--bd)}pre{overflow:auto;white-space:pre-wrap;border:1px solid var(--bd);padding:.75rem;border-radius:6px}
 .s-failed,.s-error{color:var(--bad);font-weight:600}.s-flaky{color:var(--warn);font-weight:600}</style></head><body>
 <h1>UI nightly report</h1>
-<p>${sum.failed ? 'Regressions found.' : 'No regressions.'} ${sum.total} screenshots. ${sum.counts.failed} failed, ${sum.counts.error} errors, ${sum.counts.flaky} flaky, ${sum.counts.new} new.</p>
+<p>${sum.failed ? 'Regressions found.' : sum.accepted ? 'Baselines updated.' : 'No regressions.'} ${sum.total} screenshots. ${sum.counts.failed - sum.accepted} failed, ${sum.counts.error} errors, ${sum.counts.flaky} flaky, ${sum.counts.new} new${sum.accepted ? `, ${sum.accepted} accepted as the new baseline` : ''}.</p>
 <h2>Differences</h2>${items || '<p>None.</p>'}
 ${notable.length > 200 ? `<p>${notable.length - 200} more in results.json.</p>` : ''}
 <h2>Summary</h2><pre>${body}</pre>

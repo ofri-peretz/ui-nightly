@@ -62,7 +62,10 @@ async function main() {
       const { loadResults, summarize, summaryMarkdown, writeReport, writeBaselines } = await import('./report.mjs');
       const plan = args.plan && existsSync(args.plan) ? JSON.parse(readFileSync(args.plan, 'utf8')) : null;
       const compat = args.compat && existsSync(args.compat) ? JSON.parse(readFileSync(args.compat, 'utf8')) : null;
-      const sum = summarize(loadResults(args.results ?? work), plan);
+      // An update run that writes baselines accepts the changed screenshots; without a write there
+      // is nothing to accept, so a pull-request run with the update flag still reports them.
+      const accept = Boolean(args.update && args.writeBaselines);
+      const sum = summarize(loadResults(args.results ?? work), plan, { accept });
       // A compat check that was asked for but left no result is a failure, not a pass.
       const compatMissing = Boolean(cfg.compat.enabled && args.compat && !compat);
       const notes = compatMissing ? ['The CSS compatibility check produced no result. Treated as a failure.'] : [];
@@ -74,6 +77,7 @@ async function main() {
       let changes = { added: 0, updated: 0, removed: 0 };
       if (args.writeBaselines) changes = writeBaselines(sum, resolve(args.writeBaselines), { update: Boolean(args.update), prune: Boolean(args.prune) });
       setOutput('regressions', String(sum.regressions));
+      setOutput('accepted', String(sum.accepted));
       const bad = sum.failed || Boolean(compat?.failed) || compatMissing;
       setOutput('failed', String(bad));
       setOutput('baseline_changes', String(changes.added + changes.updated + changes.removed));

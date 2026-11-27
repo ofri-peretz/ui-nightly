@@ -75,8 +75,22 @@ test('a deliberate CSS change fails with a diff image and exit 1', () => {
   assert.equal(report('--no-fail').status, 0);
 });
 
+test('an update run that writes baselines accepts the change: it exits 0 and lists what it took', () => {
+  // The same diffs fail a normal run (the test above), and a run that only has the update flag but
+  // writes nothing (a pull request) must still fail: there is no new baseline to accept.
+  assert.equal(report('--update').status, 1, 'update without a write accepts nothing');
+  const r = report('--write-baselines', base, '--update');
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  const summary = readFileSync(join(work, 'report', 'summary.md'), 'utf8');
+  assert.match(summary, /Baselines updated/);
+  assert.match(summary, /Accepted as the new baseline/);
+  assert.doesNotMatch(summary, /### Regressions/);
+  const j = JSON.parse(readFileSync(join(work, 'report', 'results.json'), 'utf8'));
+  assert.equal(j.regressions, 0);
+  assert.ok(j.accepted > 0);
+});
+
 test('accepting the change (update) makes the next run green', () => {
-  assert.equal(report('--write-baselines', base, '--update', '--no-fail').status, 0);
   assert.equal(capture().status, 0);
   assert.equal(report().status, 0);
 });

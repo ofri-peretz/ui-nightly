@@ -91,6 +91,9 @@ on:
       failed:
         description: "true when the run found a regression or a compat failure."
         value: ${{ jobs.report.outputs.failed }}
+      accepted:
+        description: Number of changed screenshots an update run accepted as the new baseline.
+        value: ${{ jobs.report.outputs.accepted }}
 
 defaults:
   run:
@@ -293,6 +296,7 @@ jobs:
       issues: write
     outputs:
       regressions: ${{ steps.report.outputs.regressions }}
+      accepted: ${{ steps.report.outputs.accepted }}
       failed: ${{ steps.report.outputs.failed }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -378,7 +382,7 @@ jobs:
           if [ "${{ needs.build.outputs.shots }}" = "0" ]; then
             echo "## UI nightly: nothing to check" >> "$GITHUB_STEP_SUMMARY"
             echo "No stories or pages were selected (changed mode with no affected stories, or an empty include list)." >> "$GITHUB_STEP_SUMMARY"
-            echo "regressions=0" >> "$GITHUB_OUTPUT"; echo "failed=false" >> "$GITHUB_OUTPUT"
+            echo "regressions=0" >> "$GITHUB_OUTPUT"; echo "accepted=0" >> "$GITHUB_OUTPUT"; echo "failed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           if [ "$WRITE" = "true" ]; then
@@ -422,6 +426,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           FAILED: ${{ steps.report.outputs.failed }}
+          ACCEPTED: ${{ steps.report.outputs.accepted }}
           LABEL: ${{ inputs.issue-label }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
@@ -435,7 +440,9 @@ jobs:
               gh issue create --title "$title" --label "$LABEL" --body-file "$RUNNER_TEMP/issue.md"
             fi
           elif [ -n "$num" ]; then
-            gh issue comment "$num" --body "Green again: $RUN_URL"
+            if [ "${ACCEPTED:-0}" != "0" ]; then note="Resolved: $ACCEPTED changed screenshot(s) were accepted as the new baseline (see the job summary): $RUN_URL"
+            else note="Green again: $RUN_URL"; fi
+            gh issue comment "$num" --body "$note"
             gh issue close "$num"
           fi
       - name: Fail on regression

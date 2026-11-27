@@ -116,10 +116,32 @@ jobs:
       tool-ref: ${{ github.sha }}
       open-issue: false
 
+  selftest-update:
+    name: workflow, an update run accepts the same change
+    needs: selftest-detect
+    permissions:
+      contents: write
+      issues: write
+    uses: ./.github/workflows/nightly.yml
+    with:
+      working-directory: fixtures/storybook-app
+      node-version: '22'
+      # The very build the detect run reported as red, now with update-baselines: it must be green
+      # (fail-on-regression stays on, so a red run fails this job) and report what it accepted.
+      build-command: >-
+        npx storybook build &&
+        find storybook-static/assets -name '*.css' -exec sh -c 'echo ".btn-primary{background:#d1242f!important}" >> "$1"' _ {} \;
+      baseline-branch: selftest-${{ github.run_id }}-${{ github.run_attempt }}
+      baseline-write: always
+      update-baselines: true
+      tool-repo: ${{ github.repository }}
+      tool-ref: ${{ github.sha }}
+      open-issue: false
+
   selftest-assert:
     name: workflow results are what they should be
-    needs: [selftest-compare, selftest-detect]
-    if: always() && needs.selftest-detect.result == 'success'
+    needs: [selftest-compare, selftest-detect, selftest-update]
+    if: always() && needs.selftest-detect.result == 'success' && needs.selftest-update.result == 'success'
     runs-on: ubuntu-24.04
     steps:
       - name: Compare run was green, detect run was red
@@ -127,14 +149,19 @@ jobs:
           COMPARE: ${{ needs.selftest-compare.outputs.failed }}
           DETECT: ${{ needs.selftest-detect.outputs.failed }}
           DETECT_N: ${{ needs.selftest-detect.outputs.regressions }}
+          UPDATE: ${{ needs.selftest-update.outputs.failed }}
+          UPDATE_N: ${{ needs.selftest-update.outputs.regressions }}
+          ACCEPTED: ${{ needs.selftest-update.outputs.accepted }}
         run: |
           echo "compare failed=$COMPARE, detect failed=$DETECT regressions=$DETECT_N"
           [ "$COMPARE" = "false" ] || { echo "::error::an unchanged build must pass"; exit 1; }
           [ "$DETECT" = "true" ] && [ "${DETECT_N:-0}" -gt 0 ] || { echo "::error::a deliberate regression must be reported"; exit 1; }
+          echo "update failed=$UPDATE regressions=$UPDATE_N accepted=$ACCEPTED"
+          [ "$UPDATE" = "false" ] && [ "${UPDATE_N:-1}" = "0" ] && [ "${ACCEPTED:-0}" -gt 0 ] || { echo "::error::an update run must accept the same diffs and pass"; exit 1; }
 
   selftest-cleanup:
     name: remove the throwaway baseline branch
-    needs: [selftest-bootstrap, selftest-assert]
+    needs: [selftest-bootstrap, selftest-assert, selftest-update]
     if: always() && needs.selftest-bootstrap.result != 'skipped'
     runs-on: ubuntu-24.04
     permissions:
